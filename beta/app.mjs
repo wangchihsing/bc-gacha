@@ -16,13 +16,13 @@ const store = {
 const desktop = matchMedia("(min-width: 900px)");
 
 let D, token = "", sha = null, progress = null, busy = false;
-const ui = { event: null, off: new Set(), prio: "draws", plan: null, hint: null, seqRows: 20, confirm: null, saved: "",
+const ui = { route: new Map(), focus: null, event: null, off: new Set(), prio: "draws", plan: null, hint: null, seqRows: 20, confirm: null, saved: "",
   calib: null, undo: false, tab: "plan", side: "seq" };
 let pool, table, base, world;
 
 const today = () => new Date().toLocaleDateString("sv-SE");
 const glabel = cat => E.labelOf(base + E.cellIndex(cat));
-const rarityCls = cat => cat.rarity === 4 ? "uber" : cat.rarity === 5 ? "legend" : "";
+const rarityCls = cat => cat.rarity === 5 ? "legend" : cat.info?.blue ? "blue" : cat.rarity === 4 ? "uber" : "";
 const wishlist = () => progress.wishlist || [];
 const goals = () => wishlist().filter(id => !ui.off.has(id));
 const isTarget = id => goals().includes(id);
@@ -39,7 +39,7 @@ function extraLines(cat, cls = "") {
     const same = groups.find(x => x.c.id === g.c.id);
     same ? same.ks.push(g.k) : groups.push({ ks: [g.k], c: g.c });
   }
-  return groups.map(g => `<span class="${cls} ${isTarget(g.c.id) ? "hit" : ""}">${g.ks.map(k => icon(k, "sm")).join("")}${esc(g.c.name)}</span>`).join("");
+  return groups.map(g => `<span class="${cls} ${rarityCls(g.c)} ${isTarget(g.c.id) ? "hit" : ""}">${g.ks.map(k => icon(k, "sm")).join("")}${esc(g.c.name)}</span>`).join("");
 }
 const snapshot = p => ({ seed: p.seed, last: p.last, position: p.position, event: p.event,
   tickets: p.tickets, food: p.food, plat: p.plat, legend: p.legend });
@@ -120,9 +120,20 @@ function stagesOf(steps) {
   for (const s of steps) {
     const prev = stages.at(-1);
     if (s.action === prev?.action && s.pool === prev?.pool && s.action !== "eleven") prev.steps.push(s);
-    else stages.push({ action: s.action, pool: s.pool, steps: [s] });
+    else stages.push({ action: s.action, pool: s.pool, steps: [s], no: stages.length + 1 });
   }
   return stages;
+}
+
+// 路線經過的格子：格子位置（以下一抽為 0）→ 第幾段、這一抽在第幾個（給序列標示與發光動畫用）
+function routeOf(steps) {
+  const map = new Map();
+  let n = 0;
+  for (const st of stagesOf(steps)) for (const d of st.steps.flatMap(draws)) {
+    const k = E.indexOf(d.at) - base;
+    if (!map.has(k)) map.set(k, { no: st.no, order: n++, extra: st.action === "plat" || st.action === "legend" });
+  }
+  return map;
 }
 // 存進紀錄用：結構化，顯示時再換成圖示
 const stagesData = (steps, w = world) => stagesOf(steps).map(s => ({ a: s.action, n: s.steps.length, pool: poolName(s.pool, w) || undefined }));
@@ -235,11 +246,12 @@ function renderStages(steps) {
     const ds = st.steps.flatMap(draws);
     const hits = ds.filter(d => isTarget(d.cat.id));
     const sw = ds.filter(d => d.switched && !d.guaranteed);
-    const where = poolName(st.pool) ? `<span class="muted small">${esc(poolName(st.pool))}</span>` : "";
-    return `<li class="step"><div class="step-title"><span class="seg-item">${stageChip(st.action, st.steps.length)}</span>` +
-      `<span class="mono muted">${ds[0].at} → ${ds.at(-1).after}</span>${where}</div>` +
+    const where = poolName(st.pool) ? `<div class="where">${esc(poolName(st.pool))}</div>` : "";
+    return `<li class="step" data-stage="${st.no}">${where}<div class="step-title"><span class="seg-item">${stageChip(st.action, st.steps.length)}</span>` +
+      `<span class="mono muted">${ds[0].at} → ${ds.at(-1).after}</span>` +
+      `<button class="locate" data-locate="${st.no}" aria-label="在序列標出這一段">序列 ↗</button></div>` +
       (hits.length ? `<div class="hit">拿到 ${hits.map(d => `${esc(d.cat.name)}（${d.at}）`).join("、")}</div>` : "") +
-      sw.map(d => `<div class="small" style="color:var(--switch)">換列：${d.at} ${d.dup ? `原本是 ${esc(d.dup)}，跟上一抽重複，改成 ${esc(d.cat.name)}` : "必中"}，下一抽跳到 ${d.after}</div>`).join("") +
+      (sw.length ? `<div class="sw-line">換列 ${sw.map(d => `${d.at}→${d.after}`).join("、")}</div>` : "") +
       `<details><summary>每一抽的角色</summary><ol class="draws">${ds.map(drawRow).join("")}</ol></details></li>`;
   }).join("");
   return { head, items };
@@ -298,8 +310,15 @@ function findPlan() {
   if (!g.length) { ui.plan = { error: "這些角色現在哪一池都抽不到。", skipped: [] }; return renderPlan(); }
   const r = P.bestPlan(world, progress, g, ui.prio);
   ui.plan = r.error ? { error: r.error, skipped } : { steps: r.steps, index: r.index, skipped };
+  ui.route = r.error ? new Map() : routeOf(r.steps);
+  // 電腦版序列就在旁邊：算完先讓整條路線亮一次
+  ui.focus = desktop.matches ? "all" : null;
+  if (ui.route.size) {
+    const need = Math.max(...ui.route.keys()) / 2 + 3;
+    if (need > ui.seqRows) { ui.seqRows = Math.ceil(need / 20) * 20; if (ui.seqRows > table.rows.length) rebuild(); }
+  }
   if (!r.error) ui.hint = P.waitHint(D, progress, today(), g, ui.prio, r, worldOpts());
-  renderPlan();
+  renderPlan(); renderSeq();
 }
 
 // ---------- 存進度 ----------
@@ -329,14 +348,27 @@ async function commit() {
 // ---------- 序列與校正位置 ----------
 function renderSeq() {
   const start = table.start;
+  const route = ui.plan?.steps ? ui.route : new Map();
   $("seq").innerHTML = table.rows.slice(0, ui.seqRows).map(row => `<div class="seq-row">${row.map(cat => {
     const now = cat === start || cat.rerolled === start;
     const k = E.cellIndex(cat);
-    return `<button class="cell ${rarityCls(cat)} ${now ? "now" : ""} ${isTarget(cat.id) ? "target" : ""} ${ui.calib?.k === k ? "picked" : ""}" data-cell="${k}">` +
-      `<span class="mono">${glabel(cat)}</span><span class="nm">${esc(cat.name)}</span>` +
+    const r = route.get(k);
+    const glow = r && (ui.focus === "all" || ui.focus === r.no);
+    return `<button class="cell ${rarityCls(cat)} ${now ? "now" : ""} ${isTarget(cat.id) ? "target" : ""} ${ui.calib?.k === k ? "picked" : ""} ${r ? "route" : ""} ${glow ? "glow" : ""}" data-cell="${k}"` +
+      (glow ? ` style="animation-delay:${Math.min(r.order, 40) * 25}ms"` : "") + `>` +
+      `<span class="mono">${glabel(cat)}${r ? `<span class="stage-no">${r.no}</span>` : ""}</span><span class="nm">${esc(cat.name)}</span>` +
       (cat.rerolled ? `<span class="alt">重複 → ${esc(cat.rerolled.name)}</span>` : "") +
       extraLines(cat, "xl") + "</button>";
   }).join("")}</div>`).join("");
+}
+
+// 在序列標出路線的某一段：手機先切到序列頁，再捲到那一段的第一格
+function locate(no) {
+  ui.focus = no;
+  if (!desktop.matches) setTab("seq");
+  renderSeq();
+  const cell = document.querySelector("#seq .cell.glow");
+  cell?.scrollIntoView({ block: "center", behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth" });
 }
 
 // 校正：把下一抽改到第 k 格（以目前下一抽為 0）。上一抽只影響「這格會不會因重複換列」
@@ -472,6 +504,12 @@ async function connect(t) {
 function bind() {
   for (const [k, src] of Object.entries(ICON)) for (const img of document.querySelectorAll(`.ic-${k}`)) img.src = src;
   desktop.addEventListener("change", applyTabs);
+  // 電腦版：游標移到路線的某一段，旁邊序列裡那幾格就亮起來
+  document.addEventListener("mouseover", e => {
+    if (!desktop.matches || !ui.plan?.steps) return;
+    const st = e.target.closest("#plan-out .step[data-stage]");
+    if (st && +st.dataset.stage !== ui.focus) { ui.focus = +st.dataset.stage; renderSeq(); }
+  });
 
   $("pool").onchange = async e => {
     const prev = ui.event;
@@ -496,8 +534,11 @@ function bind() {
   document.addEventListener("click", e => {
     const t = e.target.closest("button");
     if (!e.target.closest(".search")) renderSuggest(false);
+    // 資源編輯框打開時，點框外任何地方就取消
+    if (!$("wallet-edit").hidden && !e.target.closest("#wallet-edit, #wallet-btn")) openWallet(false);
     if (!t) return;
     if (t.dataset.tab) setTab(t.dataset.tab);
+    else if (t.dataset.locate) locate(+t.dataset.locate);
     else if (t.dataset.id) { $("q").value = ""; renderSuggest(false); setWishlist([...wishlist(), +t.dataset.id], `想要清單加入 ${catName(+t.dataset.id)}`); }
     else if (t.dataset.rm) setWishlist(wishlist().filter(id => id !== +t.dataset.rm), `想要清單移除 ${catName(+t.dataset.rm)}`);
     else if (t.dataset.toggle) { const id = +t.dataset.toggle; ui.off.has(id) ? ui.off.delete(id) : ui.off.add(id); ui.plan = null; ui.hint = null; renderChips(); renderPlan(); renderSeq(); }

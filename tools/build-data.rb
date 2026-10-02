@@ -28,9 +28,26 @@ src['events'].each do |key, e|
   cats.each { |id| used[id] = true }
 end
 
+# 藍眼（貓咪祭限定超激）：出現在超激率 9% 以上的貓咪祭，
+# 而一般卡池只出現在週年、新年這類「人氣角色大集合」特別池
+fest = {}
+regular = {}
+src['events'].each_value do |e|
+  next if e['name'].to_s =~ /白金轉蛋|傳說轉蛋/
+  special = e['name'].to_s =~ /大集合|週年|特別|慶祝|出現率上升/
+  (src['gacha'].dig(e['id'], 'cats') || []).each do |id|
+    next unless src['cats'].dig(id, 'rarity') == 4
+    if e['uber'].to_i >= 900 then fest[id] = true
+    elsif !special then regular[id] = true
+    end
+  end
+end
+
 cats = {}
 src['cats'].each do |id, c|
-  cats[id] = { 'name' => c['name'], 'rarity' => c['rarity'] } if used[id] || c['rarity'].to_i >= 4
+  next unless used[id] || c['rarity'].to_i >= 4
+  cats[id] = { 'name' => c['name'], 'rarity' => c['rarity'] }
+  cats[id]['blue'] = true if fest[id] && !regular[id]
 end
 
 # 內容沒變就不寫檔，避免每天只因日期不同而多一筆提交
