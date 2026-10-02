@@ -525,6 +525,13 @@ function bind() {
     if (!(await persist({ ...progress, event: ui.event }, "切換卡池"))) { ui.event = prev; rebuild(); renderAll(); }
   };
   $("wallet-btn").onclick = () => openWallet($("wallet-edit").hidden);
+  // 主畫面開的網頁沒辦法下拉重新整理：先跟 GitHub 要最新的檔案（略過瀏覽器快取），再重新載入
+  $("refresh").onclick = async () => {
+    $("refresh").disabled = true;
+    const files = ["./", "js/app.mjs", "js/engine.mjs", "js/planner.mjs", "js/github.mjs", "data/bc-tw.json"];
+    await Promise.allSettled(files.map(f => fetch(f, { cache: "reload" })));
+    location.reload();
+  };
   $("wallet-save").onclick = saveWallet;
   $("wallet-cancel").onclick = () => openWallet(false);
   $("q").oninput = () => renderSuggest(true);

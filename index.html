@@ -59,6 +59,8 @@ button { cursor: pointer; }
 .wallet-btn { margin-left: auto; min-width: 0; border: 1px solid var(--line); background: var(--sunk); border-radius: 12px; padding: 6px 10px;
   display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; justify-content: flex-end; }
 .money { display: inline-flex; align-items: center; gap: 3px; font-family: var(--mono); font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.refresh { flex: none; width: 40px; height: 40px; border: 1px solid var(--line); background: var(--sunk); border-radius: 12px; font-size: 20px; line-height: 1; color: var(--ink); }
+.refresh:disabled { opacity: .5; }
 .wallet-edit { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 0 12px; display: grid; gap: 10px; }
 .purses { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
 .purse { display: flex; align-items: center; gap: 8px; background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-width: 0; }
@@ -209,6 +211,7 @@ span.legend { color: var(--legend); font-weight: 700; }
       <span class="money"><img class="icon sm ic-p" alt="白金券"><span id="m-plat"></span></span>
       <span class="money"><img class="icon sm ic-l" alt="傳說券"><span id="m-legend"></span></span>
     </button>
+    <button class="refresh" id="refresh" aria-label="重新整理" title="重新整理">↻</button>
   </div>
   <div class="wallet-edit" id="wallet-edit" hidden>
     <div class="purses">
