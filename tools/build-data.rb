@@ -5,7 +5,8 @@ require 'yaml'
 require 'json'
 require 'date'
 
-src = YAML.load_file(ARGV.fetch(0))
+# Ruby 3.1 以後 load_file 預設不讀日期，要用 unsafe_load_file；本機 Ruby 2.6 沒有這個方法
+src = YAML.respond_to?(:unsafe_load_file) ? YAML.unsafe_load_file(ARGV.fetch(0)) : YAML.load_file(ARGV.fetch(0))
 cutoff = (Date.today - 120).to_s
 events = {}
 gacha = {}
@@ -29,5 +30,13 @@ src['cats'].each do |id, c|
   cats[id] = { 'name' => c['name'], 'rarity' => c['rarity'] } if used[id] || c['rarity'].to_i >= 4
 end
 
-File.write(ARGV.fetch(1), JSON.generate('built' => Date.today.to_s, 'cats' => cats, 'gacha' => gacha, 'events' => events))
-puts "卡池 #{events.size}、角色 #{cats.size}"
+# 內容沒變就不寫檔，避免每天只因日期不同而多一筆提交
+out = ARGV.fetch(1)
+body = { 'cats' => cats, 'gacha' => gacha, 'events' => events }
+old = File.exist?(out) ? JSON.parse(File.read(out)).reject { |k, _| k == 'built' } : nil
+if old == JSON.parse(JSON.generate(body))
+  puts "沒有變化（卡池 #{events.size}、角色 #{cats.size}）"
+else
+  File.write(out, JSON.generate({ 'built' => Date.today.to_s }.merge(body)))
+  puts "已更新（卡池 #{events.size}、角色 #{cats.size}）"
+end

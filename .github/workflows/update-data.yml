@@ -1,0 +1,26 @@
+name: 更新卡池資料
+
+on:
+  schedule:
+    - cron: "0 19,7 * * *"   # 台灣時間每天 03:00、15:00
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  update:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: 下載 godfat 台版資料
+        run: curl -fsSL -o /tmp/bc-tw.yaml https://gitlab.com/godfat/battle-cats-rolls/-/raw/master/build/bc-tw.yaml
+      - name: 轉成網站用的資料
+        run: ruby tools/build-data.rb /tmp/bc-tw.yaml data/bc-tw.json
+      - name: 有變化才提交
+        run: |
+          if git diff --quiet; then echo "卡池資料沒有變化"; exit 0; fi
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit -am "自動更新卡池資料 $(date -u +%F)"
+          git push
