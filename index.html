@@ -14,7 +14,7 @@
 :root {
   --bg: #eef0f5; --surface: #ffffff; --sunk: #f6f7fa; --ink: #1a1c28; --muted: #5a6074; --line: #dcdfe8;
   --gold: #d99a06; --gold-ink: #7a5200; --gold-soft: #fdf1d2;
-  --warn: #c62f2f; --legend: #6b3fd1; --blue: #1d5fd1; --legend-soft: #efe8ff; --glow: rgb(217 154 6 / .45);
+  --warn: #c62f2f; --collab: #d13438; --legend: #6b3fd1; --blue: #1d5fd1; --legend-soft: #efe8ff; --glow: rgb(217 154 6 / .45);
   --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
   --sans: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
   --bar-h: 56px; --tab-h: 58px;
@@ -22,11 +22,11 @@
 @media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
   --bg: #11121a; --surface: #1a1c27; --sunk: #151620; --ink: #eceef6; --muted: #9ba1b6; --line: #2b2e3d;
   --gold: #f2b631; --gold-ink: #f6c95e; --gold-soft: #3a2f12;
-  --warn: #ff6b6b; --legend: #ad92ff; --blue: #6aa6ff; --legend-soft: #2a2140; --glow: rgb(242 182 49 / .5); color-scheme: dark } }
+  --warn: #ff6b6b; --collab: #ff6f6f; --legend: #ad92ff; --blue: #6aa6ff; --legend-soft: #2a2140; --glow: rgb(242 182 49 / .5); color-scheme: dark } }
 :root[data-theme="dark"] {
   --bg: #11121a; --surface: #1a1c27; --sunk: #151620; --ink: #eceef6; --muted: #9ba1b6; --line: #2b2e3d;
   --gold: #f2b631; --gold-ink: #f6c95e; --gold-soft: #3a2f12;
-  --warn: #ff6b6b; --legend: #ad92ff; --blue: #6aa6ff; --legend-soft: #2a2140; --glow: rgb(242 182 49 / .5); color-scheme: dark }
+  --warn: #ff6b6b; --collab: #ff6f6f; --legend: #ad92ff; --blue: #6aa6ff; --legend-soft: #2a2140; --glow: rgb(242 182 49 / .5); color-scheme: dark }
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
@@ -45,7 +45,10 @@ button { cursor: pointer; }
 /* 頂部狀態列 */
 .bar { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--line);
   padding-top: env(safe-area-inset-top, 0px); }
-.bar-in { max-width: 1180px; margin: 0 auto; padding-inline: 16px; min-height: var(--bar-h); display: flex; align-items: center; gap: 12px; }
+.bar-in { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 6px; min-height: var(--bar-h); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
+/* 卡池選單：手機在狀態列第二行占滿，電腦夾在下一抽和資源中間 */
+.bar .pool-pick { order: 3; flex: 1 1 100%; min-width: 0; padding: 7px 10px; font-size: 16px; text-overflow: ellipsis; }
+@media (min-width: 900px) { .bar .pool-pick { order: 0; flex: 1 1 auto; max-width: 520px; } }
 .here { display: grid; line-height: 1.15; flex: none; }
 .here .lbl { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
 .here .pos { font-family: var(--mono); font-weight: 600; font-size: 24px; }
@@ -84,7 +87,8 @@ button { cursor: pointer; }
 
 /* 想要清單 */
 .search { position: relative; }
-.search input, .goto-input, .setup input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); }
+.search input, .goto-input, .setup input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); font-size: 16px; }
+select, .purse input { font-size: 16px; }
 .suggest { position: absolute; left: 0; right: 0; top: calc(100% + 4px); background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
   max-height: 46vh; overflow-y: auto; z-index: 10; box-shadow: 0 12px 28px rgb(0 0 0 / .18); }
 .suggest .grp { position: sticky; top: 0; background: var(--sunk); padding: 6px 12px; font-size: 12px; font-weight: 700; color: var(--muted); border-bottom: 1px solid var(--line); }
@@ -163,8 +167,12 @@ button.cell { background: var(--surface); border: 1px solid var(--line); border-
 .log-cost { display: flex; flex-wrap: wrap; gap: 4px 12px; }
 .foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
 .link { border: 0; background: transparent; color: var(--muted); text-decoration: underline; padding: 4px 0; font-size: 12px; }
-/* 顏色只有：金黃＝主色與路線；藍＝藍眼（貓咪祭限定）；紫＝傳說稀有；紅＝資源不夠或出錯 */
+/* 顏色：金黃＝主色與路線；藍＝藍眼（貓咪祭限定）；紫＝傳說稀有；紅＝合作角色，以及資源不夠或出錯 */
 span.blue { color: var(--blue); font-weight: 700; }
+span.collab { color: var(--collab); font-weight: 700; }
+.cell.collab .nm, .draw.collab .nm { color: var(--collab); font-weight: 700; }
+.cell .xl.collab { color: var(--collab); }
+.chip .chip-name.collab { color: var(--collab); }
 span.legend { color: var(--legend); font-weight: 700; }
 .cell.blue .nm, .draw.blue .nm { color: var(--blue); font-weight: 700; }
 .cell.legend { background: var(--legend-soft); }
@@ -192,6 +200,7 @@ span.legend { color: var(--legend); font-weight: 700; }
       <span class="lbl"><span class="dot" id="sync" role="img" aria-label="讀取中"></span>下一抽</span>
       <span class="pos" id="pos"></span>
     </div>
+    <select id="pool" class="pool-pick" aria-label="卡池"></select>
     <button class="wallet-btn" id="wallet-btn" aria-expanded="false" aria-controls="wallet-edit" aria-label="抽卡資源，點一下修改">
       <span class="money"><img class="icon sm ic-t" alt="金券"><span id="m-tickets"></span></span>
       <span class="money"><img class="icon sm ic-f" alt="罐頭"><span id="m-food"></span></span>
@@ -245,8 +254,6 @@ span.legend { color: var(--legend); font-weight: 700; }
     <section class="col" id="panel-seq">
       <div class="box">
         <div class="now-info" id="now-info"></div>
-        <select id="pool" aria-label="序列顯示哪一個卡池"></select>
-        <div class="small muted" id="pool-meta"></div>
       </div>
       <div class="box">
         <div class="goto"><input id="goto-cell" class="goto-input" placeholder="校正到格號，例如 195A" autocomplete="off" spellcheck="false" aria-label="校正到格號"><button class="ghost" id="goto">校正</button></div>

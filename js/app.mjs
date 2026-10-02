@@ -22,7 +22,8 @@ let pool, table, base, world;
 
 const today = () => new Date().toLocaleDateString("sv-SE");
 const glabel = cat => E.labelOf(base + E.cellIndex(cat));
-const rarityCls = cat => cat.rarity === 5 ? "legend" : cat.info?.blue ? "blue" : "";
+// 只標三種：傳說稀有（紫）、藍眼＝貓咪祭限定（藍）、合作（紅）；一般超激不上色
+const rarityCls = cat => cat.rarity === 5 ? "legend" : cat.info?.blue ? "blue" : cat.info?.collab ? "collab" : "";
 const wishlist = () => progress.wishlist || [];
 const goals = () => wishlist().filter(id => !ui.off.has(id));
 const isTarget = id => goals().includes(id);
@@ -181,8 +182,6 @@ function renderNow() {
   $("now-info").innerHTML = `<div class="big"><span class="mono">${esc(progress.position)}</span> <span class="${rarityCls(start)}">${esc(start.name)}</span></div>` +
     (g ? `<div class="small">${icon("f", "sm")} 11 連保證 <b>${esc(start.guaranteed.name)}</b></div>` : "") +
     `<div class="extra-now">${extraLines(start)}</div>`;
-  const ev = D.events[ui.event];
-  $("pool-meta").textContent = `${md(ev.s)}～${md(ev.e)}` + (ev.e < today() ? "・已結束" : "");
 }
 
 function renderPools() {
@@ -190,7 +189,7 @@ function renderPools() {
   const list = Object.entries(D.events).map(([k, e]) => ({ k, e })).filter(x => !x.e.k);
   const now = list.filter(x => x.e.e >= today()).sort((a, b) => a.e.s.localeCompare(b.e.s));
   const past = list.filter(x => x.e.e < today()).sort((a, b) => b.e.s.localeCompare(a.e.s));
-  const opt = x => `<option value="${x.k}">${esc(md(x.e.s))} ${esc(x.e.n.replace(/★.*$/, ""))}</option>`;
+  const opt = x => `<option value="${x.k}">${esc(md(x.e.s))}～${esc(md(x.e.e))} ${esc(x.e.n.replace(/★.*$/, ""))}</option>`;
   sel.innerHTML = `<optgroup label="進行中與即將登場">${now.map(opt).join("")}</optgroup>` +
     `<optgroup label="過往卡池">${past.map(opt).join("")}</optgroup>`;
   sel.value = ui.event;
@@ -202,17 +201,23 @@ const norm = s => s.normalize("NFKC").toLowerCase();
 const sources = id => P.sourcesOf(world, id);
 const srcIcons = id => `<span class="srcs">${sources(id).map(s => icon(SOURCE_ICON[s], "sm")).join("")}</span>`;
 
+// 沒打字：只列上面選的這個卡池有的角色；有打字：所有角色都搜得到，依「這個卡池／其他卡池／現在抽不到」分組
+const inSelected = id => (pool.slots[4] || []).includes(id) || (pool.slots[5] || []).includes(id);
 function renderSuggest(open) {
   const box = $("suggest"), q = norm($("q").value.trim());
   if (!open) { box.hidden = true; $("q").setAttribute("aria-expanded", "false"); return; }
   const hits = catalog.filter(c => !wishlist().includes(c.id))
     .map(c => ({ c, r: !q ? 0 : c.names.some(n => norm(n).startsWith(q)) ? 0 : c.names.some(n => norm(n).includes(q)) ? 1 : 2 }))
-    .filter(h => h.r < 2 && (q || sources(h.c.id).length))
+    .filter(h => h.r < 2 && (q || inSelected(h.c.id)))
     .sort((a, b) => a.r - b.r || a.c.names[0].localeCompare(b.c.names[0], "zh-Hant"));
-  const group = (title, arr) => arr.length ? `<div class="grp">${title}（${arr.length}）</div>` +
-    arr.slice(0, 40).map(h => `<button data-id="${h.c.id}"><span>${esc(h.c.names[0])}${h.c.rarity === 5 ? "（傳說稀有）" : ""}</span>${srcIcons(h.c.id)}</button>`).join("") : "";
-  const yes = hits.filter(h => sources(h.c.id).length), no = hits.filter(h => !sources(h.c.id).length);
-  box.innerHTML = group("現在抽得到", yes) + group("現在抽不到", no) || `<div class="grp">找不到符合的角色</div>`;
+  const group = (title, arr, icons) => arr.length ? `<div class="grp">${title}（${arr.length}）</div>` +
+    arr.slice(0, 40).map(h => `<button data-id="${h.c.id}"><span class="${rarityCls({ rarity: h.c.rarity, info: D.cats[h.c.id] })}">${esc(h.c.names[0])}</span>` +
+      `${icons ? srcIcons(h.c.id) : ""}</button>`).join("") : "";
+  const here = hits.filter(h => inSelected(h.c.id));
+  const other = hits.filter(h => !inSelected(h.c.id) && sources(h.c.id).length);
+  const none = hits.filter(h => !inSelected(h.c.id) && !sources(h.c.id).length);
+  box.innerHTML = group("這個卡池", here, false) + group("其他卡池", other, true) + group("現在抽不到", none, false) ||
+    `<div class="grp">${q ? "找不到符合的角色" : "這個卡池沒有可以加的角色，打字搜尋其他卡池"}</div>`;
   box.hidden = false;
   $("q").setAttribute("aria-expanded", "true");
 }

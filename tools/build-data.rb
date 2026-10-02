@@ -43,11 +43,28 @@ src['events'].each_value do |e|
   end
 end
 
+# 合作（聯名）超激：沒進過貓咪祭、白金、傳說的超激裡，說明寫「從 X 來參戰」「來自 X 系列」「在 X 中登場」的，
+# 再加上跟它們同一個轉蛋池的其他限定超激（有些合作角色的說明沒寫出處，例如 EVA 的使徒）
+ticket = {}
+src['events'].each_value do |e|
+  next unless e['name'].to_s =~ /白金轉蛋|傳說轉蛋/
+  (src['gacha'].dig(e['id'], 'cats') || []).each { |id| ticket[id] = true }
+end
+limited = src['cats'].select { |id, c| c['rarity'] == 4 && !fest[id] && !ticket[id] }
+marked = limited.select { |_, c| Array(c['desc']).first.to_s =~ /來參戰|合作|中登場|來自[^。]*?(系列|物語|！|!)/ }
+collab = marked.dup
+src['gacha'].each_value do |g|
+  ids = g['cats'] || []
+  next unless ids.any? { |id| marked[id] }
+  ids.each { |id| collab[id] = true if limited[id] }
+end
+
 cats = {}
 src['cats'].each do |id, c|
   next unless used[id] || c['rarity'].to_i >= 4
   cats[id] = { 'name' => c['name'], 'rarity' => c['rarity'] }
   cats[id]['blue'] = true if fest[id] && !regular[id]
+  cats[id]['collab'] = true if collab[id]
 end
 
 # 內容沒變就不寫檔，避免每天只因日期不同而多一筆提交
