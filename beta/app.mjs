@@ -221,7 +221,7 @@ function renderChips() {
   $("chips").innerHTML = wishlist().map(id => {
     const has = sources(id).length > 0, off = ui.off.has(id);
     return `<span class="chip ${has ? "" : "out"} ${off ? "off" : ""}">` +
-      `<button class="chip-name" data-toggle="${id}" aria-pressed="${!off}" title="${off ? "這次不算，點一下加回來" : "點一下這次先不算"}">` +
+      `<button class="chip-name ${rarityCls({ rarity: D.cats[id]?.rarity, info: D.cats[id] })}" data-toggle="${id}" aria-pressed="${!off}" title="${off ? "這次不算，點一下加回來" : "點一下這次先不算"}">` +
       `${esc(catName(id))}${has ? "" : "<span class=\"small\">・現在抽不到</span>"}</button>` +
       `<button class="x" data-rm="${id}" aria-label="從想要清單移除 ${esc(catName(id))}">×</button></span>`;
   }).join("");
