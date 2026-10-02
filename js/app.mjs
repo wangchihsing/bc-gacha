@@ -16,7 +16,7 @@ const store = {
 
 let D, token = "", sha = null, progress = null, busy = false;
 const ui = { event: null, goals: [], prio: "draws", plan: null, manual: [], seqRows: 20, confirm: null, saved: "" };
-let pool, table, base, extras = [];
+let pool, table, base, extras = [], planPools = [];
 
 const today = () => new Date().toLocaleDateString("sv-SE");
 const elevenCap = () => Math.floor(progress.food / FOOD_PER_ELEVEN);
@@ -33,7 +33,8 @@ function sync(text, bad = false) {
 
 function rebuild() {
   pool = E.makePool(D, ui.event);
-  const count = Math.min(1200, Math.max(240, progress.tickets + 11 * elevenCap() + 100, ui.seqRows + 10));
+  // 找抽法在「不管餘額」時最多會用到金券 300 張、11 連 30 次，表格要夠長
+  const count = Math.min(1200, Math.max(720, progress.tickets + 11 * elevenCap() + 100, ui.seqRows + 10));
   table = E.buildTable(pool, { seed: progress.seed, last: progress.last, count });
   base = E.indexOf(progress.position);
   extras = EXTRAS.map(x => {
@@ -42,17 +43,36 @@ function rebuild() {
     const p = E.makePool(D, key);
     return { ...x, key, pool: p, rows: E.buildTable(p, { seed: progress.seed, last: progress.last, count }).rows };
   }).filter(Boolean);
+  // 找抽法比較的一般卡池：今天開著的（同一池重複出現只留一個），選單選的那池排第一
+  const sig = e => [e.id, e.rare, e.supa, e.uber, !!e.guaranteed, !!e.step_up].join("/");
+  const seen = new Set();
+  planPools = Object.entries(D.events)
+    .filter(([, e]) => !e.k && e.s <= today() && e.e >= today())
+    .sort((a, b) => (b[0] === ui.event) - (a[0] === ui.event) || b[1].s.localeCompare(a[1].s))
+    .filter(([, e]) => !seen.has(sig(e)) && seen.add(sig(e)))
+    .map(([key, e]) => {
+      if (key === ui.event) return { key, name: shortName(e), pool, rows: table.rows };
+      const p = E.makePool(D, key);
+      return { key, name: shortName(e), pool: p, rows: E.buildTable(p, { seed: progress.seed, last: progress.last, count }).rows };
+    });
 }
+
+function shortName(e) {
+  const m = /「([^」]+)」/.exec(e.n);
+  return m ? `「${m[1]}」池` : e.n.replace(/★.*$/, "").slice(0, 10) + "…池";
+}
+const poolName = key => planPools.find(p => p.key === key)?.name ?? "";
+const rowsOf = key => planPools.find(p => p.key === key)?.rows ?? table.rows;
 
 function extraEvent(kind) {
   return Object.entries(D.events).filter(([, e]) => e.k === kind && e.s <= today() && e.e >= today())
     .sort((a, b) => b[1].s.localeCompare(a[1].s))[0]?.[0];
 }
 
-// 某隻角色在這個卡池、白金、傳說的哪幾個池抽得到
+// 某隻角色在今天開著的一般卡池、白金、傳說哪幾種抽得到
 function poolsOf(id) {
   const has = p => (p.slots[4] || []).includes(id) || (p.slots[5] || []).includes(id);
-  return [...(has(pool) ? ["一般"] : []), ...extras.filter(x => has(x.pool)).map(x => x.label)];
+  return [...(planPools.some(p => has(p.pool)) ? ["一般"] : []), ...extras.filter(x => has(x.pool)).map(x => x.label)];
 }
 const extraCell = (x, cat) => { const i = E.cellIndex(cat); return x.rows[i >> 1]?.[i & 1]; };
 
@@ -100,7 +120,8 @@ function draws(step) {
     const at = glabel(atCat), after = cat.next ? glabel(cat.next) : "";
     // 重複稀有換列：原本這格抽到的貓跟上一抽一樣，改成另一隻並跳到別列
     const ci = E.cellIndex(cat);
-    const dup = /R/.test(cat.extraLabel || "") ? table.rows[ci >> 1]?.[ci & 1]?.name : null;
+    const rows = rowsOf(step.pool);
+    const dup = /R/.test(cat.extraLabel || "") ? rows[ci >> 1]?.[ci & 1]?.name : null;
     return { cat, at, after, dup, guaranteed: isG, switched: after && at.slice(-1) !== after.slice(-1) };
   });
 }
@@ -124,8 +145,8 @@ function stagesOf(steps) {
   const stages = [];
   for (const s of steps) {
     const prev = stages.at(-1);
-    if (s.action === prev?.action && s.action !== "eleven") prev.steps.push(s);
-    else stages.push({ action: s.action, steps: [s] });
+    if (s.action === prev?.action && s.pool === prev?.pool && s.action !== "eleven") prev.steps.push(s);
+    else stages.push({ action: s.action, pool: s.pool, steps: [s] });
   }
   return stages;
 }
@@ -155,6 +176,9 @@ function renderStatus() {
   $("pool-meta").textContent = `${md(ev.s)}～${md(ev.e)}・超激 ${pct(ev.uber)}` +
     (legend > 0 ? `・傳說 ${pct(legend)}` : "") + (ev.guaranteed ? "・11 連保證超激" : "") +
     (ev.e < today() ? "・已結束" : "");
+  const md2 = k => D.events[k].s.slice(5).replace("-", "/");
+  $("plan-note").textContent = `找抽法會一起比較今天開著的 ${planPools.length} 個一般卡池，` +
+    extras.map(x => `${x.label}（${md2(x.key)} 版）`).join("、") + "，路線中途可以換池。";
 }
 
 function renderPools() {
@@ -208,8 +232,9 @@ function stageHead(st) {
   return `${XTAG(st.action)}× ${st.steps.length}`;
 }
 function stageTitle(st) {
-  if (st.action === "ticket") return icon("t") + `金券 × ${st.steps.length}`;
-  if (st.action === "eleven") return icon("f") + "11 連抽";
+  const where = st.pool && poolName(st.pool) ? `<span class="muted small">・${esc(poolName(st.pool))}</span>` : "";
+  if (st.action === "ticket") return icon("t") + `金券 × ${st.steps.length}` + where;
+  if (st.action === "eleven") return icon("f") + "11 連抽" + where;
   return XTAG(st.action) + `${ACTION_LABEL[st.action]} × ${st.steps.length}`;
 }
 
@@ -267,23 +292,24 @@ function renderPlan() {
   const short = !affordable(c);
   out.innerHTML = (ui.saved ? savedBox() : "") + `<div class="box"><div class="plan-head">${head}</div>${costLine(c)}` +
     (short ? `<div class="note">目前的抽卡資源不夠，上面是不管餘額時最少要花的量，紅字是差多少。</div>` : "") +
-    `<ol class="steps">${items}</ol><div class="note">抽完下一抽是 <span class="mono">${glabel(p.next)}</span>。</div>${confirmBox("plan", p.steps)}</div>`;
+    `<ol class="steps">${items}</ol><div class="note">抽完下一抽是 <span class="mono">${E.labelOf(base + p.index)}</span>。</div>${confirmBox("plan", p.steps)}</div>`;
 }
 
 function findPlan() {
   ui.saved = ""; ui.confirm = null;
   if (!ui.goals.length) { ui.plan = { error: "先在上面選 1～3 個想抽的角色。" }; return renderPlan(); }
   const missing = ui.goals.filter(id => !inPool(id));
-  if (missing.length) { ui.plan = { error: `${missing.map(catName).join("、")} 不在這個卡池，換卡池再找。` }; return renderPlan(); }
-  const run = limits => E.findPlan(table.start, ui.goals, limits, ui.prio, pool.guaranteedRolls, table.rows, extras);
+  if (missing.length) { ui.plan = { error: `${missing.map(catName).join("、")} 現在哪一池都抽不到。` }; return renderPlan(); }
+  const pools = planPools.map(p => ({ key: p.key, rows: p.rows, guaranteedRolls: p.pool.guaranteedRolls }));
+  const run = (limits, opts) => E.findPlanMulti({ index: 0, last: progress.last }, ui.goals, limits, ui.prio, pools, extras, opts);
   const n = ui.goals.length;
-  let r = run({ tickets: progress.tickets, eleven: elevenCap(), plat: Math.min(progress.plat, n), legend: Math.min(progress.legend, n) });
-  if (!r) {
-    const keep = ui.seqRows;
-    ui.seqRows = 700; rebuild(); ui.seqRows = keep;
-    r = run({ tickets: 300, eleven: 30, plat: n, legend: n });
+  // 先找不管餘額的最好抽法；餘額不夠才在餘額內另外找
+  let r = run({ tickets: 300, eleven: 30, plat: n, legend: n }, { relaxed: true });
+  if (r && !affordable(cost(r.steps))) {
+    const within = run({ tickets: progress.tickets, eleven: elevenCap(), plat: Math.min(progress.plat, n), legend: Math.min(progress.legend, n) }, { maxNodes: 300000 });
+    if (within && !within.tooBig) r = within;
   }
-  ui.plan = r ? { steps: r.steps, next: r.next } : { error: "就算金券 300 張、11 連 30 次，再加上白金券、傳說券，也抽不到全部目標。" };
+  ui.plan = r ? { steps: r.steps, index: r.index } : { error: "就算金券 300 張、11 連 30 次，再加上白金券、傳說券，也抽不到全部目標。" };
   renderPlan();
 }
 
@@ -319,7 +345,8 @@ async function commit(kind) {
   const got = steps.flatMap(draws).filter(d => d.cat.rarity >= 4).map(d => `${d.cat.name}（${d.at}）`);
   const entry = {
     time: new Date().toLocaleString("sv-SE"), from: progress.position, to, event: ui.event,
-    steps: stagesOf(steps).map(s => s.action === "eleven" ? "11連" : `${ACTION_LABEL[s.action]}×${s.steps.length}`).join(" → "),
+    steps: stagesOf(steps).map(s => (s.action === "eleven" ? "11連" : `${ACTION_LABEL[s.action]}×${s.steps.length}`) +
+      (s.pool && poolName(s.pool) ? `@${poolName(s.pool)}` : "")).join(" → "),
     got, tickets: c.t, food: c.food, plat: c.p, legend: c.l, via: kind === "plan" ? "找抽法" : "手動抽",
   };
   const next = { ...progress, seed: st.seed, last: st.last, position: to, event: ui.event,

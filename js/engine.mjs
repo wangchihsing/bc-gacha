@@ -219,40 +219,55 @@ export function cellsOf(rows) {
   return map;
 }
 
-// 找抽法：一般池的金券單抽、11 連抽，加上白金券、傳說券單抽的組合，找出抽到全部目標的路線
-// 白金、傳說與一般池共用同一條序列：在第 i 格改抽白金，拿到白金表第 i 格，下一抽變成同列的第 i+2 格
-// rows：一般池表格；extras：[{ action: "plat" | "legend", rows }]
+// 找抽法：在多個一般卡池裡用金券單抽、11 連抽，加上白金券、傳說券單抽，找出抽到全部目標的路線
+// 所有卡池共用同一條序列，狀態只看「第幾格」與「上一抽是哪隻貓」，所以路線中途可以換池：
+// 每個池在同一格出的稀有貓不同，重複換列的機會也不同
+// start：{ index, last }（index 以表格 1A=0 起算）
+// pools：[{ key, rows, guaranteedRolls }]；extras：[{ action: "plat" | "legend", rows }]
 // limits: { tickets, eleven, plat, legend }；priority: "draws" | "tickets" | "food"
 // 排序先比白金券＋傳說券用量（同樣多時少用傳說券），再依 priority
-// 回傳 { steps: [{ action, cats:[cat], next }], next } 或 null
+// 回傳 { steps: [{ action, pool, cats, next }], index, last, counts } 或 null
 const COUNT_KEYS = { ticket: "tickets", eleven: "eleven", plat: "plat", legend: "legend" };
 
-export function findPlan(startCat, goalIds, limits, priority, guaranteedRolls, rows = [], extras = []) {
+// 某池在某格、上一抽是 last 時，這一抽實際拿到的貓（重複稀有就是換列後的那隻）
+export function catAt(rows, index, last) {
+  const c = rows[index >> 1]?.[index & 1];
+  if (!c) return null;
+  return c.duped({ id: last }) ? c.rerolled : c;
+}
+
+// opts.relaxed：不在乎資源上限時用，每個狀態只留排序最好的一條路，快很多
+// opts.maxNodes：搜尋量上限，超過回傳 { tooBig: true }
+export function findPlanMulti(start, goalIds, limits, priority, pools, extras = [], opts = {}) {
   const all = (1 << goalIds.length) - 1;
   const bit = id => goalIds.reduce((b, g, i) => b | (g === id ? 1 << i : 0), 0);
   const lim = k => limits[k] ?? 0;
-  const rank = n => {
-    const c = n.c, rare = c.plat + c.legend, draws = c.tickets + 11 * c.eleven;
+  const rank = c => {
+    const rare = c.plat + c.legend, draws = c.tickets + 11 * c.eleven;
     if (priority === "tickets") return [rare, c.legend, c.eleven, c.tickets, draws];
     if (priority === "food") return [rare, c.legend, c.tickets, c.eleven, draws];
     return [rare, c.legend, draws, c.eleven, c.tickets];
   };
   const cmp = (a, b) => {
-    const x = rank(a), y = rank(b);
+    const x = a.rank, y = b.rank;
     for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i];
     return a.order - b.order;
   };
   const keys = ["tickets", "eleven", "plat", "legend"];
-  const le = (a, b) => keys.every(k => a[k] <= b[k]);
+  const lexLe = (x, y) => { for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] < y[i]; return true; };
+  const le = opts.relaxed ? (a, b) => lexLe(rank(a), rank(b)) : (a, b) => keys.every(k => a[k] <= b[k]);
   const heap = [], seen = new Map();
   let order = 0;
+  // 上一抽不是稀有貓就不可能造成重複換列，視為同一個狀態，搜尋量少很多
+  const rareIds = new Set(pools.flatMap(p => p.rows.flat().filter(c => c.rarity === Rare).map(c => c.id)));
   const push = n => {
-    if (!n.cat || keys.some(k => n.c[k] > lim(k))) return;
-    const key = n.cat.number + "/" + n.mask;
-    const peers = seen.get(key) || [];
-    if (peers.some(p => p.alive && le(p.c, n.c))) return;
+    if (keys.some(k => n.c[k] > lim(k))) return;
+    const key = n.index + "/" + (rareIds.has(n.last) ? n.last : 0) + "/" + n.mask;
+    let peers = seen.get(key) || [];
+    if (peers.some(p => le(p.c, n.c))) return;
     for (const p of peers) if (le(n.c, p.c)) p.alive = false;
-    n.alive = true; n.order = order++;
+    peers = peers.filter(p => p.alive);
+    n.alive = true; n.order = order++; n.rank = rank(n.c);
     peers.push(n); seen.set(key, peers);
     heap.push(n);
     for (let i = heap.length - 1; i > 0;) {
@@ -276,30 +291,87 @@ export function findPlan(startCat, goalIds, limits, priority, guaranteedRolls, r
     return top;
   };
   const add = (c, action) => ({ ...c, [COUNT_KEYS[action]]: c[COUNT_KEYS[action]] + 1 });
-  push({ cat: startCat, mask: 0, c: { tickets: 0, eleven: 0, plat: 0, legend: 0 }, prev: null });
+  const go = (n, step) => {
+    const lastCat = step.cats.at(-1);
+    push({ index: cellIndex(step.next), last: lastCat.id,
+      mask: step.cats.reduce((m, x) => m | bit(x.id), n.mask),
+      c: add(n.c, step.action), prev: n, step });
+  };
+  push({ index: start.index, last: start.last, mask: 0, c: { tickets: 0, eleven: 0, plat: 0, legend: 0 }, prev: null });
+  let pops = 0;
   while (heap.length) {
     const n = pop();
     if (!n.alive) continue;
+    if (opts.maxNodes && ++pops > opts.maxNodes) return { tooBig: true };
     if (n.mask === all) {
       const steps = [];
-      for (let x = n; x.prev; x = x.prev) steps.unshift({ action: x.action, cats: x.cats, next: x.cat });
-      return { steps, next: n.cat, counts: n.c };
+      for (let x = n; x.prev; x = x.prev) steps.unshift(x.step);
+      return { steps: tidyPools(steps, start, pools, goalIds), index: n.index, last: n.last, counts: n.c };
     }
-    // 金券單抽
-    push({ cat: n.cat.next, mask: n.mask | bit(n.cat.id), c: add(n.c, "ticket"),
-      prev: n, action: "ticket", cats: [n.cat] });
-    // 11 連抽：保證池最後一抽換成超激
-    const step = elevenFrom(n.cat, guaranteedRolls);
-    if (step) push({ cat: step.next, mask: step.cats.reduce((m, x) => m | bit(x.id), n.mask),
-      c: add(n.c, "eleven"), prev: n, action: "eleven", cats: step.cats });
-    // 白金、傳說單抽
+    for (const p of pools) {
+      const cat = catAt(p.rows, n.index, n.last);
+      if (!cat) continue;
+      if (cat.next) go(n, { action: "ticket", pool: p.key, cats: [cat], next: cat.next });
+      const e = elevenFrom(cat, p.guaranteedRolls);
+      if (e) go(n, { ...e, pool: p.key });
+    }
     for (const x of extras) {
-      const s = extraFrom(n.cat, x.rows, rows, x.action);
-      if (s) push({ cat: s.next, mask: n.mask | bit(s.cats[0].id), c: add(n.c, x.action),
-        prev: n, action: x.action, cats: s.cats });
+      const got = x.rows[n.index >> 1]?.[n.index & 1];
+      if (got?.next) go(n, { action: x.action, pool: x.action, cats: [got], next: got.next });
     }
   }
   return null;
+}
+
+// 同一步換到別的池抽，只要拿到的目標一樣、抽完停在同一格、對之後的重複換列也沒影響，就算等價；
+// 從等價的選法裡挑換池次數最少的組合（同樣少就優先排在前面的池）
+function tidyPools(steps, start, pools, goalIds) {
+  const goalsOf = st => st.cats.filter(c => goalIds.includes(c.id)).map(c => c.id).sort().join();
+  // 抽完停在同一格，而且不管上一抽是哪隻，每個池在那一格拿到的貓都一樣，之後的路線就完全不受影響
+  const sameAfter = (a, b) => {
+    const i = cellIndex(a.next);
+    if (i !== cellIndex(b.next)) return false;
+    const la = a.cats.at(-1).id, lb = b.cats.at(-1).id;
+    return la === lb || pools.every(p => catAt(p.rows, i, la) === catAt(p.rows, i, lb));
+  };
+  const same = (a, b) => a.cats.length === b.cats.length && goalsOf(a) === goalsOf(b) && sameAfter(a, b);
+  let index = start.index, last = start.last;
+  const options = steps.map(step => {
+    let opts = [step];
+    if (step.action === "ticket" || step.action === "eleven") {
+      opts = pools.map(p => {
+        const cat = catAt(p.rows, index, last);
+        if (!cat) return null;
+        const alt = step.action === "ticket" ? (cat.next && { action: "ticket", pool: p.key, cats: [cat], next: cat.next })
+          : (e => e && { ...e, pool: p.key })(elevenFrom(cat, p.guaranteedRolls));
+        return alt && same(alt, step) ? alt : null;
+      }).filter(Boolean);
+    }
+    index = cellIndex(step.next); last = step.cats.at(-1).id;
+    return opts;
+  });
+  // 動態規劃：best[i][j] = 走到第 i 步、第 i 步用 options[i][j] 時最少換池次數
+  const isPool = o => o.action === "ticket" || o.action === "eleven";
+  let best = options[0].map(() => ({ cost: 0, path: [] }));
+  best = best.map((b, j) => ({ cost: 0, path: [options[0][j]] }));
+  for (let i = 1; i < options.length; i++) {
+    best = options[i].map(o => {
+      let pick = null;
+      best.forEach(b => {
+        const prevPool = [...b.path].reverse().find(isPool)?.pool;
+        const cost = b.cost + (isPool(o) && prevPool && prevPool !== o.pool ? 1 : 0);
+        if (!pick || cost < pick.cost) pick = { cost, path: [...b.path, o] };
+      });
+      return pick;
+    });
+  }
+  return best.reduce((a, b) => (b.cost < a.cost ? b : a)).path;
+}
+
+// 單一卡池版（舊介面）：從某格開始找
+export function findPlan(startCat, goalIds, limits, priority, guaranteedRolls, rows, extras = []) {
+  return findPlanMulti({ index: cellIndex(startCat), last: 0 }, goalIds, limits, priority,
+    [{ key: "main", rows, guaranteedRolls }], extras);
 }
 
 // 從某格開 11 連；格子不夠回傳 null
