@@ -189,7 +189,9 @@ function renderPools() {
   const list = Object.entries(D.events).map(([k, e]) => ({ k, e })).filter(x => !x.e.k);
   const now = list.filter(x => x.e.e >= today()).sort((a, b) => a.e.s.localeCompare(b.e.s));
   const past = list.filter(x => x.e.e < today()).sort((a, b) => b.e.s.localeCompare(a.e.s));
-  const opt = x => `<option value="${x.k}">${esc(md(x.e.s))}～${esc(md(x.e.e))} ${esc(x.e.n.replace(/★.*$/, ""))}</option>`;
+  // 選項文字縮短：日期＋卡池名前 18 個字
+  const short = n => { const t = n.replace(/★.*$/, ""); return t.length > 18 ? t.slice(0, 18) + "…" : t; };
+  const opt = x => `<option value="${x.k}">${esc(md(x.e.s))}～${esc(md(x.e.e))} ${esc(short(x.e.n))}</option>`;
   sel.innerHTML = `<optgroup label="進行中與即將登場">${now.map(opt).join("")}</optgroup>` +
     `<optgroup label="過往卡池">${past.map(opt).join("")}</optgroup>`;
   sel.value = ui.event;

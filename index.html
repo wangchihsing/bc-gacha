@@ -47,7 +47,9 @@ button { cursor: pointer; }
   padding-top: env(safe-area-inset-top, 0px); }
 .bar-in { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 6px; min-height: var(--bar-h); display: flex; flex-wrap: wrap; align-items: center; gap: 8px 12px; }
 /* 卡池選單：手機在狀態列第二行占滿，電腦夾在下一抽和資源中間 */
-.bar .pool-pick { order: 3; flex: 1 1 100%; min-width: 0; padding: 7px 10px; font-size: 16px; text-overflow: ellipsis; }
+/* iPhone 的 Safari 會用最長選項的寬度排選單，整頁被撐寬就縮小顯示；用固定寬度的框把它關住 */
+.bar .pool-pick { order: 3; flex: 1 1 100%; min-width: 0; overflow: hidden; }
+.bar .pool-pick select { display: block; width: 100%; max-width: 100%; min-width: 0; padding: 7px 10px; font-size: 16px; text-overflow: ellipsis; }
 @media (min-width: 900px) { .bar .pool-pick { order: 0; flex: 1 1 auto; max-width: 520px; } }
 .here { display: grid; line-height: 1.15; flex: none; }
 .here .lbl { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
@@ -200,7 +202,7 @@ span.legend { color: var(--legend); font-weight: 700; }
       <span class="lbl"><span class="dot" id="sync" role="img" aria-label="讀取中"></span>下一抽</span>
       <span class="pos" id="pos"></span>
     </div>
-    <select id="pool" class="pool-pick" aria-label="卡池"></select>
+    <div class="pool-pick"><select id="pool" aria-label="卡池"></select></div>
     <button class="wallet-btn" id="wallet-btn" aria-expanded="false" aria-controls="wallet-edit" aria-label="抽卡資源，點一下修改">
       <span class="money"><img class="icon sm ic-t" alt="金券"><span id="m-tickets"></span></span>
       <span class="money"><img class="icon sm ic-f" alt="罐頭"><span id="m-food"></span></span>
