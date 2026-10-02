@@ -134,6 +134,13 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 .xtag.plat { background: var(--sunk); color: var(--ink); border: 1px solid var(--line); }
 .xtag.legend { background: var(--gold-soft); color: var(--gold-ink); }
 .cell .xl { font-size: 12px; color: var(--muted); }
+button.cell { text-align: left; font: inherit; color: inherit; width: 100%; cursor: pointer; }
+.cell.picked { outline: 2px solid var(--switch); }
+.chip .chip-name { width: auto; height: auto; border-radius: 0; font-size: inherit; font-weight: inherit; padding: 0; text-align: left; }
+.chip.off { opacity: .55; }
+.radio { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; }
+.goto-input { flex: 1 1 140px; min-width: 0; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); font-family: var(--mono); }
+.hint { border-color: var(--switch); }
 .cell .xl.hit { color: var(--uber); font-weight: 700; }
 </style>
 </head>
@@ -169,10 +176,10 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
       </div>
     </div>
     <div class="wallet">
-      <div class="purse"><img class="icon" id="ic-t" alt=""><label for="tickets"><span class="unit">金券</span><input id="tickets" type="number" inputmode="numeric" min="0"></label></div>
-      <div class="purse"><img class="icon" id="ic-f" alt=""><label for="food"><span class="unit">罐頭</span><input id="food" type="number" inputmode="numeric" min="0" step="1"></label></div>
-      <div class="purse"><span class="xtag plat">白金</span><label for="plat"><span class="unit">白金券</span><input id="plat" type="number" inputmode="numeric" min="0"></label></div>
-      <div class="purse"><span class="xtag legend">傳說</span><label for="legend"><span class="unit">傳說券</span><input id="legend" type="number" inputmode="numeric" min="0"></label></div>
+      <div class="purse"><img class="icon ic-t" alt=""><label for="tickets"><span class="unit">金券</span><input id="tickets" type="number" inputmode="numeric" min="0"></label></div>
+      <div class="purse"><img class="icon ic-f" alt=""><label for="food"><span class="unit">罐頭</span><input id="food" type="number" inputmode="numeric" min="0" step="1"></label></div>
+      <div class="purse"><img class="icon ic-p" alt=""><label for="plat"><span class="unit">白金券</span><input id="plat" type="number" inputmode="numeric" min="0"></label></div>
+      <div class="purse"><img class="icon ic-l" alt=""><label for="legend"><span class="unit">傳說券</span><input id="legend" type="number" inputmode="numeric" min="0"></label></div>
     </div>
     <div>
       <label class="small muted" for="pool">卡池</label>
@@ -184,15 +191,16 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
 
   <nav class="tabs" role="tablist">
     <button role="tab" id="tab-plan" aria-selected="true">找抽法</button>
-    <button role="tab" id="tab-manual" aria-selected="false">手動抽</button>
-    <button role="tab" id="tab-seq" aria-selected="false">序列</button>
+    <button role="tab" id="tab-seq" aria-selected="false">序列・校正</button>
+    <button role="tab" id="tab-log" aria-selected="false">紀錄</button>
   </nav>
 
   <section class="panel" id="panel-plan">
     <div class="box">
-      <h2>想抽到誰</h2>
+      <h2>想要清單</h2>
+      <p class="note" style="margin:0">清單會存起來，每天自動幫你算；有角色變好抽了會在 GitHub 通知你。點角色名稱可以讓它這次先不算。</p>
       <div class="search">
-        <input id="q" type="search" placeholder="輸入角色名稱，最多 3 個" autocomplete="off" aria-expanded="false">
+        <input id="q" type="search" placeholder="輸入角色名稱，加入想要清單" autocomplete="off" aria-expanded="false">
         <div class="suggest" id="suggest" hidden></div>
       </div>
       <div class="chips" id="chips"></div>
@@ -206,25 +214,22 @@ details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
     <div id="plan-out"></div>
   </section>
 
-  <section class="panel" id="panel-manual" hidden>
-    <div class="box">
-      <h2>抽之前先看結果</h2>
-      <div class="row">
-        <button class="ghost" id="m-ticket"><img class="icon ic-t" alt=""> 金券抽 1 次</button>
-        <button class="ghost" id="m-eleven"><img class="icon ic-f" alt=""> 11 連抽</button>
-        <button class="ghost" id="m-plat">白金券抽 1 次</button>
-        <button class="ghost" id="m-legend">傳說券抽 1 次</button>
-      </div>
-      <div id="manual-out"></div>
-    </div>
-  </section>
-
   <section class="panel" id="panel-seq" hidden>
     <div class="box">
       <h2>接下來的序列</h2>
       <p class="note" style="margin:0">金框是下一抽。藍字是遇到重複稀有時會換到的角色。每格下面是改抽白金、傳說會拿到的角色。</p>
+      <p class="note" style="margin:0">在遊戲裡抽了卻沒存到這裡：點你現在真正的下一抽那格，或直接輸入格號，就能把進度改回來。</p>
+      <div class="row goto"><input id="goto-cell" class="goto-input" placeholder="格號，例如 195A" autocomplete="off" spellcheck="false"><button class="ghost" id="goto">校正到這格</button></div>
+      <div id="calib"></div>
       <div class="seq" id="seq"></div>
       <button class="ghost" id="more">再顯示 20 列</button>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-log" hidden>
+    <div class="box">
+      <h2>抽卡紀錄</h2>
+      <div id="log"></div>
     </div>
   </section>
   <div class="foot" id="foot" hidden><span id="data-ver"></span><button class="link" id="rekey">換鑰匙</button></div>

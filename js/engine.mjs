@@ -13,6 +13,24 @@ export function advanceSeed(s) {
   return s;
 }
 
+// 往回推一格，godfat gacha.rb 的 retreat_seed
+export function retreatSeed(s) {
+  const shl = (x, b) => (x ^ (x << b)) >>> 0;
+  s = shl(s, 15);
+  s = shl(s, 30);
+  s = (s ^ (s >>> 17)) >>> 0;
+  s = shl(s, 13);
+  s = shl(s, 26);
+  return s;
+}
+
+// 從某個狀態的種子往前（k>0）或往回（k<0）移 k 格後的種子
+export function seedAt(seed, k) {
+  for (let i = 0; i < k; i++) seed = advanceSeed(seed);
+  for (let i = 0; i > k; i--) seed = retreatSeed(seed);
+  return seed;
+}
+
 export function normalizeSeed(n) {
   return Math.abs(Math.trunc(n)) % MaxSeed;
 }
