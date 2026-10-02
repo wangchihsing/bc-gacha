@@ -98,7 +98,10 @@ function draws(step) {
     const isG = /G$/.test(cat.extraLabel || "");
     const atCat = isG ? step.cats[i - 1].next : cat;
     const at = glabel(atCat), after = cat.next ? glabel(cat.next) : "";
-    return { cat, at, after, switched: after && at.slice(-1) !== after.slice(-1) };
+    // 重複稀有換列：原本這格抽到的貓跟上一抽一樣，改成另一隻並跳到別列
+    const ci = E.cellIndex(cat);
+    const dup = /R/.test(cat.extraLabel || "") ? table.rows[ci >> 1]?.[ci & 1]?.name : null;
+    return { cat, at, after, dup, guaranteed: isG, switched: after && at.slice(-1) !== after.slice(-1) };
   });
 }
 
@@ -194,7 +197,8 @@ function renderChips() {
 // ---------- 找抽法 ----------
 function drawRow(d) {
   return `<li class="draw ${rarityCls(d.cat)} ${isTarget(d.cat.id) ? "target" : ""}"><span class="mono">${d.at}</span>` +
-    `<span class="nm">${esc(d.cat.name)}</span>${d.switched ? `<span class="sw">換到 ${d.after}</span>` : "<span></span>"}</li>`;
+    `<span class="nm">${esc(d.cat.name)}${d.dup ? `<span class="muted small">（${esc(d.dup)} 重複）</span>` : ""}</span>` +
+    `${d.switched ? `<span class="sw">${d.guaranteed ? "必中" : "重複"}換到 ${d.after}</span>` : "<span></span>"}</li>`;
 }
 
 const XTAG = a => `<span class="xtag ${a}">${a === "plat" ? "白金" : "傳說"}</span>`;
@@ -220,7 +224,7 @@ function renderStages(steps) {
     return `<li class="step"><div class="step-title">${stageTitle(st)}` +
       `<span class="mono muted">${ds[0].at} → ${ds.at(-1).after}</span></div>` +
       (hits.length ? `<div class="hit">拿到 ${hits.map(d => `${esc(d.cat.name)}（${d.at}）`).join("、")}</div>` : "") +
-      (sw.length ? `<div class="small" style="color:var(--switch)">換列：${sw.map(d => `${d.at}→${d.after}`).join("、")}</div>` : "") +
+      sw.map(d => `<div class="small" style="color:var(--switch)">換列：${d.at} ${d.dup ? `原本是 ${esc(d.dup)}，跟上一抽重複，改成 ${esc(d.cat.name)}` : "必中"}，下一抽跳到 ${d.after}</div>`).join("") +
       `<details><summary>每一抽的角色</summary><ol class="draws">${ds.map(drawRow).join("")}</ol></details></li>`;
   }).join("");
   return { head, items };
@@ -262,7 +266,7 @@ function renderPlan() {
   const { head, items } = renderStages(p.steps);
   const short = !affordable(c);
   out.innerHTML = (ui.saved ? savedBox() : "") + `<div class="box"><div class="plan-head">${head}</div>${costLine(c)}` +
-    (short ? `<div class="note">目前的金券或罐頭不夠，上面是不管餘額時最少要花的量。</div>` : "") +
+    (short ? `<div class="note">目前的抽卡資源不夠，上面是不管餘額時最少要花的量，紅字是差多少。</div>` : "") +
     `<ol class="steps">${items}</ol><div class="note">抽完下一抽是 <span class="mono">${glabel(p.next)}</span>。</div>${confirmBox("plan", p.steps)}</div>`;
 }
 
