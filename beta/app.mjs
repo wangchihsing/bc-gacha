@@ -22,7 +22,7 @@ let pool, table, base, world;
 
 const today = () => new Date().toLocaleDateString("sv-SE");
 const glabel = cat => E.labelOf(base + E.cellIndex(cat));
-const rarityCls = cat => cat.rarity === 5 ? "legend" : cat.info?.blue ? "blue" : cat.rarity === 4 ? "uber" : "";
+const rarityCls = cat => cat.rarity === 5 ? "legend" : cat.info?.blue ? "blue" : "";
 const wishlist = () => progress.wishlist || [];
 const goals = () => wishlist().filter(id => !ui.off.has(id));
 const isTarget = id => goals().includes(id);
@@ -222,7 +222,7 @@ function renderChips() {
     const has = sources(id).length > 0, off = ui.off.has(id);
     return `<span class="chip ${has ? "" : "out"} ${off ? "off" : ""}">` +
       `<button class="chip-name" data-toggle="${id}" aria-pressed="${!off}" title="${off ? "這次不算，點一下加回來" : "點一下這次先不算"}">` +
-      `${esc(catName(id))}${has ? srcIcons(id) : "<span class=\"small\">・現在抽不到</span>"}</button>` +
+      `${esc(catName(id))}${has ? "" : "<span class=\"small\">・現在抽不到</span>"}</button>` +
       `<button class="x" data-rm="${id}" aria-label="從想要清單移除 ${esc(catName(id))}">×</button></span>`;
   }).join("");
 }
