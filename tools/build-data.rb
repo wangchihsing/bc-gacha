@@ -1,5 +1,6 @@
 # 把 godfat 的台版資料 bc-tw.yaml 轉成網站用的 data/bc-tw.json
 # 只留近 120 天與之後的卡池、這些卡池裡的角色，以及全部超激與傳說（給目標搜尋用）
+# 白金轉蛋標 k=plat、傳說轉蛋標 k=legend，網站用它們做白金／傳說規劃，不列進一般卡池選單
 # 用法：ruby tools/build-data.rb bc-tw.yaml data/bc-tw.json
 require 'yaml'
 require 'json'
@@ -13,13 +14,15 @@ gacha = {}
 used = {}
 
 src['events'].each do |key, e|
-  next if e['end_on'].to_s < cutoff || e['name'].to_s =~ /白金轉蛋|傳說轉蛋/
+  next if e['end_on'].to_s < cutoff
   cats = src['gacha'].dig(e['id'], 'cats')
   next if cats.nil? || cats.empty?
   item = { 's' => e['start_on'].to_s, 'e' => e['end_on'].to_s, 'n' => e['name'], 'id' => e['id'],
            'rare' => e['rare'], 'supa' => e['supa'], 'uber' => e['uber'] }
   item['guaranteed'] = true if e['guaranteed']
   item['step_up'] = true if e['step_up']
+  item['k'] = 'plat' if e['name'].to_s.include?('白金轉蛋')
+  item['k'] = 'legend' if e['name'].to_s.include?('傳說轉蛋')
   events[key] = item
   gacha[e['id']] = { 'cats' => cats }
   cats.each { |id| used[id] = true }

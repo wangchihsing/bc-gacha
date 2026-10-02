@@ -219,31 +219,39 @@ export function cellsOf(rows) {
   return map;
 }
 
-// 找抽法：用金券單抽與 11 連抽組合，找出抽到全部目標的路線
-// limits: { tickets, eleven }；priority: "draws" | "tickets" | "food"
-// 回傳 { steps: [{ action, cats:[cat], next }], tickets, eleven, next } 或 null
-export function findPlan(startCat, goalIds, limits, priority, guaranteedRolls) {
+// 找抽法：一般池的金券單抽、11 連抽，加上白金券、傳說券單抽的組合，找出抽到全部目標的路線
+// 白金、傳說與一般池共用同一條序列：在第 i 格改抽白金，拿到白金表第 i 格，下一抽變成同列的第 i+2 格
+// rows：一般池表格；extras：[{ action: "plat" | "legend", rows }]
+// limits: { tickets, eleven, plat, legend }；priority: "draws" | "tickets" | "food"
+// 排序先比白金券＋傳說券用量（同樣多時少用傳說券），再依 priority
+// 回傳 { steps: [{ action, cats:[cat], next }], next } 或 null
+const COUNT_KEYS = { ticket: "tickets", eleven: "eleven", plat: "plat", legend: "legend" };
+
+export function findPlan(startCat, goalIds, limits, priority, guaranteedRolls, rows = [], extras = []) {
   const all = (1 << goalIds.length) - 1;
   const bit = id => goalIds.reduce((b, g, i) => b | (g === id ? 1 << i : 0), 0);
+  const lim = k => limits[k] ?? 0;
   const rank = n => {
-    const draws = n.t + 11 * n.e;
-    if (priority === "tickets") return [n.e, n.t, draws];
-    if (priority === "food") return [n.t, n.e, draws];
-    return [draws, n.e, n.t];
+    const c = n.c, rare = c.plat + c.legend, draws = c.tickets + 11 * c.eleven;
+    if (priority === "tickets") return [rare, c.legend, c.eleven, c.tickets, draws];
+    if (priority === "food") return [rare, c.legend, c.tickets, c.eleven, draws];
+    return [rare, c.legend, draws, c.eleven, c.tickets];
   };
   const cmp = (a, b) => {
     const x = rank(a), y = rank(b);
     for (let i = 0; i < x.length; i++) if (x[i] !== y[i]) return x[i] - y[i];
     return a.order - b.order;
   };
+  const keys = ["tickets", "eleven", "plat", "legend"];
+  const le = (a, b) => keys.every(k => a[k] <= b[k]);
   const heap = [], seen = new Map();
   let order = 0;
   const push = n => {
-    if (!n.cat || n.t > limits.tickets || n.e > limits.eleven) return;
+    if (!n.cat || keys.some(k => n.c[k] > lim(k))) return;
     const key = n.cat.number + "/" + n.mask;
     const peers = seen.get(key) || [];
-    if (peers.some(p => p.alive && p.t <= n.t && p.e <= n.e)) return;
-    for (const p of peers) if (n.t <= p.t && n.e <= p.e) p.alive = false;
+    if (peers.some(p => p.alive && le(p.c, n.c))) return;
+    for (const p of peers) if (le(n.c, p.c)) p.alive = false;
     n.alive = true; n.order = order++;
     peers.push(n); seen.set(key, peers);
     heap.push(n);
@@ -267,31 +275,51 @@ export function findPlan(startCat, goalIds, limits, priority, guaranteedRolls) {
     }
     return top;
   };
-  push({ cat: startCat, mask: 0, t: 0, e: 0, prev: null });
+  const add = (c, action) => ({ ...c, [COUNT_KEYS[action]]: c[COUNT_KEYS[action]] + 1 });
+  push({ cat: startCat, mask: 0, c: { tickets: 0, eleven: 0, plat: 0, legend: 0 }, prev: null });
   while (heap.length) {
     const n = pop();
     if (!n.alive) continue;
     if (n.mask === all) {
       const steps = [];
       for (let x = n; x.prev; x = x.prev) steps.unshift({ action: x.action, cats: x.cats, next: x.cat });
-      return { steps, tickets: n.t, eleven: n.e, next: n.cat };
+      return { steps, next: n.cat, counts: n.c };
     }
     // 金券單抽
-    push({ cat: n.cat.next, mask: n.mask | bit(n.cat.id), t: n.t + 1, e: n.e,
+    push({ cat: n.cat.next, mask: n.mask | bit(n.cat.id), c: add(n.c, "ticket"),
       prev: n, action: "ticket", cats: [n.cat] });
     // 11 連抽：保證池最後一抽換成超激
-    const cats = [];
-    let c = n.cat;
-    const normal = guaranteedRolls === 11 && n.cat.guaranteed ? 10 : 11;
-    for (let i = 0; i < normal && c; i++) { cats.push(c); c = c.next; }
-    if (cats.length === normal) {
-      let next = c;
-      if (normal === 10) { cats.push(n.cat.guaranteed); next = n.cat.guaranteed.next; }
-      push({ cat: next, mask: cats.reduce((m, x) => m | bit(x.id), n.mask), t: n.t, e: n.e + 1,
-        prev: n, action: "eleven", cats });
+    const step = elevenFrom(n.cat, guaranteedRolls);
+    if (step) push({ cat: step.next, mask: step.cats.reduce((m, x) => m | bit(x.id), n.mask),
+      c: add(n.c, "eleven"), prev: n, action: "eleven", cats: step.cats });
+    // 白金、傳說單抽
+    for (const x of extras) {
+      const s = extraFrom(n.cat, x.rows, rows, x.action);
+      if (s) push({ cat: s.next, mask: n.mask | bit(s.cats[0].id), c: add(n.c, x.action),
+        prev: n, action: x.action, cats: s.cats });
     }
   }
   return null;
+}
+
+// 從某格開 11 連；格子不夠回傳 null
+export function elevenFrom(cat, guaranteedRolls) {
+  const g = guaranteedRolls === 11 && cat.guaranteed;
+  const n = g ? 10 : 11, cats = [];
+  let c = cat;
+  for (let i = 0; i < n && c; i++) { cats.push(c); c = c.next; }
+  if (cats.length < n) return null;
+  if (g) { cats.push(cat.guaranteed); c = cat.guaranteed.next; }
+  return c ? { action: "eleven", cats, next: c } : null;
+}
+
+// 從一般池的某格改抽白金或傳說：拿到該池同一格，下一抽回到一般池同列往下一格
+// 白金、傳說只出超激以上，不會觸發重複稀有換列，所以下一格一定是原表的那格
+export function extraFrom(cat, extraRows, rows, action) {
+  const i = cellIndex(cat);
+  const got = extraRows[i >> 1]?.[i & 1];
+  const next = rows[(i + 2) >> 1]?.[(i + 2) & 1];
+  return got && next ? { action, cats: [got], next } : null;
 }
 
 // 格號換算：1A=0、1B=1、2A=2…

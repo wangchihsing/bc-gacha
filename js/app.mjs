@@ -4,6 +4,9 @@ import * as GH from "./github.mjs";
 const FOOD_PER_ELEVEN = 1500;
 const TOKEN_KEY = "bcg-token";
 const ICON = { t: "img/ticket.png", f: "img/food.png" };
+// 白金、傳說與一般池共用序列；各自用目前最新的那一池
+const EXTRAS = [{ action: "plat", label: "白金" }, { action: "legend", label: "傳說" }];
+const ACTION_LABEL = { ticket: "金券", eleven: "11 連", plat: "白金券", legend: "傳說券" };
 const $ = id => document.getElementById(id);
 const esc = s => String(s).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[c]);
 const store = {
@@ -13,7 +16,7 @@ const store = {
 
 let D, token = "", sha = null, progress = null, busy = false;
 const ui = { event: null, goals: [], prio: "draws", plan: null, manual: [], seqRows: 20, confirm: null, saved: "" };
-let pool, table, base;
+let pool, table, base, extras = [];
 
 const today = () => new Date().toLocaleDateString("sv-SE");
 const elevenCap = () => Math.floor(progress.food / FOOD_PER_ELEVEN);
@@ -33,7 +36,25 @@ function rebuild() {
   const count = Math.min(1200, Math.max(240, progress.tickets + 11 * elevenCap() + 100, ui.seqRows + 10));
   table = E.buildTable(pool, { seed: progress.seed, last: progress.last, count });
   base = E.indexOf(progress.position);
+  extras = EXTRAS.map(x => {
+    const key = extraEvent(x.action);
+    if (!key) return null;
+    const p = E.makePool(D, key);
+    return { ...x, key, pool: p, rows: E.buildTable(p, { seed: progress.seed, last: progress.last, count }).rows };
+  }).filter(Boolean);
 }
+
+function extraEvent(kind) {
+  return Object.entries(D.events).filter(([, e]) => e.k === kind && e.s <= today() && e.e >= today())
+    .sort((a, b) => b[1].s.localeCompare(a[1].s))[0]?.[0];
+}
+
+// 某隻角色在這個卡池、白金、傳說的哪幾個池抽得到
+function poolsOf(id) {
+  const has = p => (p.slots[4] || []).includes(id) || (p.slots[5] || []).includes(id);
+  return [...(has(pool) ? ["一般"] : []), ...extras.filter(x => has(x.pool)).map(x => x.label)];
+}
+const extraCell = (x, cat) => { const i = E.cellIndex(cat); return x.rows[i >> 1]?.[i & 1]; };
 
 // ---------- 存到 GitHub ----------
 // 成功才換成新進度；別處先改過就載入最新的，不覆蓋
@@ -64,7 +85,8 @@ async function persist(next, message) {
 async function reload() {
   const r = await GH.load(token);
   progress = r.data; sha = r.sha;
-  ui.event = D.events[progress.event] ? progress.event : currentEvents()[0]?.k;
+  progress.plat ??= 0; progress.legend ??= 0;
+  ui.event = D.events[progress.event] && !D.events[progress.event].k ? progress.event : currentEvents()[0]?.k;
   ui.plan = null; ui.manual = []; ui.confirm = null;
   rebuild();
   sync("已同步");
@@ -83,26 +105,23 @@ function draws(step) {
 function stepFrom(cat, action) {
   if (!cat) return null;
   if (action === "ticket") return cat.next ? { action, cats: [cat], next: cat.next } : null;
-  const g = pool.guaranteedRolls === 11 && cat.guaranteed;
-  const n = g ? 10 : 11, cats = [];
-  let c = cat;
-  for (let i = 0; i < n && c; i++) { cats.push(c); c = c.next; }
-  if (cats.length < n) return null;
-  if (g) { cats.push(cat.guaranteed); c = cat.guaranteed.next; }
-  return c ? { action, cats, next: c } : null;
+  if (action === "eleven") return E.elevenFrom(cat, pool.guaranteedRolls);
+  const x = extras.find(x => x.action === action);
+  return x ? E.extraFrom(cat, x.rows, table.rows, action) : null;
 }
 
 function cost(steps) {
-  const t = steps.filter(s => s.action === "ticket").length;
-  const e = steps.filter(s => s.action === "eleven").length;
-  return { t, e, food: e * FOOD_PER_ELEVEN, draws: t + 11 * e };
+  const n = a => steps.filter(s => s.action === a).length;
+  const t = n("ticket"), e = n("eleven");
+  return { t, e, p: n("plat"), l: n("legend"), food: e * FOOD_PER_ELEVEN, draws: t + 11 * e };
 }
+const affordable = c => c.t <= progress.tickets && c.food <= progress.food && c.p <= progress.plat && c.l <= progress.legend;
 
 function stagesOf(steps) {
   const stages = [];
   for (const s of steps) {
     const prev = stages.at(-1);
-    if (s.action === "ticket" && prev?.action === "ticket") prev.steps.push(s);
+    if (s.action === prev?.action && s.action !== "eleven") prev.steps.push(s);
     else stages.push({ action: s.action, steps: [s] });
   }
   return stages;
@@ -111,7 +130,7 @@ function stagesOf(steps) {
 // ---------- 頂部狀態與卡池 ----------
 function currentEvents() {
   return Object.entries(D.events).map(([k, e]) => ({ k, e }))
-    .filter(x => x.e.e >= today()).sort((a, b) => a.e.s.localeCompare(b.e.s));
+    .filter(x => !x.e.k && x.e.e >= today()).sort((a, b) => a.e.s.localeCompare(b.e.s));
 }
 
 function renderStatus() {
@@ -121,8 +140,11 @@ function renderStatus() {
   $("next-name").style.color = start.rarity === 4 ? "var(--uber)" : start.rarity === 5 ? "var(--legend)" : "";
   const g = pool.guaranteedRolls === 11 && start.guaranteed;
   $("next-g").textContent = g ? `從這格開 11 連，保證拿到 ${start.guaranteed.name}` : "這個卡池的 11 連沒有保證超激";
+  $("next-x").textContent = extras.map(x => `${x.label}這格：${extraCell(x, start)?.name ?? "—"}`).join("｜");
   $("tickets").value = progress.tickets;
   $("food").value = progress.food;
+  $("plat").value = progress.plat;
+  $("legend").value = progress.legend;
   const ev = D.events[ui.event];
   const pct = n => (n / 100).toFixed(n % 100 ? 1 : 0) + "%";
   const md = s => s.slice(5).replace("-", "/");
@@ -135,7 +157,7 @@ function renderStatus() {
 function renderPools() {
   const sel = $("pool");
   const past = Object.entries(D.events).map(([k, e]) => ({ k, e }))
-    .filter(x => x.e.e < today()).sort((a, b) => b.e.s.localeCompare(a.e.s));
+    .filter(x => !x.e.k && x.e.e < today()).sort((a, b) => b.e.s.localeCompare(a.e.s));
   const opt = x => `<option value="${x.k}">${esc(x.e.s.slice(5).replace("-", "/"))} ${esc(x.e.n.replace(/★.*$/, ""))}</option>`;
   sel.innerHTML = `<optgroup label="進行中與即將登場">${currentEvents().map(opt).join("")}</optgroup>` +
     `<optgroup label="過往卡池">${past.map(opt).join("")}</optgroup>`;
@@ -145,7 +167,7 @@ function renderPools() {
 // ---------- 目標角色 ----------
 let catalog = [];
 const norm = s => s.normalize("NFKC").toLowerCase();
-const inPool = id => (pool.slots[4] || []).includes(id) || (pool.slots[5] || []).includes(id);
+const inPool = id => poolsOf(id).length > 0;
 
 function renderSuggest(open) {
   const box = $("suggest"), q = norm($("q").value.trim());
@@ -155,15 +177,16 @@ function renderSuggest(open) {
     .filter(h => h.r < 2 && (q || inPool(h.c.id)))
     .sort((a, b) => a.r - b.r || a.c.names[0].localeCompare(b.c.names[0], "zh-Hant"));
   const group = (title, arr) => arr.length ? `<div class="grp">${title}（${arr.length}）</div>` +
-    arr.slice(0, 40).map(h => `<button data-id="${h.c.id}">${esc(h.c.names[0])}${h.c.rarity === 5 ? "（傳說）" : ""}</button>`).join("") : "";
+    arr.slice(0, 40).map(h => `<button data-id="${h.c.id}">${esc(h.c.names[0])}${h.c.rarity === 5 ? "（傳說稀有）" : ""}` +
+      `${inPool(h.c.id) ? `<span class="muted small">・${poolsOf(h.c.id).join("、")}</span>` : ""}</button>`).join("") : "";
   const yes = hits.filter(h => inPool(h.c.id)), no = hits.filter(h => !inPool(h.c.id));
-  box.innerHTML = group("這個卡池有", yes) + group("這個卡池沒有", no) || `<div class="grp">找不到符合的角色</div>`;
+  box.innerHTML = group("抽得到", yes) + group("現在抽不到", no) || `<div class="grp">找不到符合的角色</div>`;
   box.hidden = false;
   $("q").setAttribute("aria-expanded", "true");
 }
 
 function renderChips() {
-  $("chips").innerHTML = ui.goals.map(id => `<span class="chip ${inPool(id) ? "" : "out"}"><span>${esc(catName(id))}${inPool(id) ? "" : "・本池沒有"}</span>` +
+  $("chips").innerHTML = ui.goals.map(id => `<span class="chip ${inPool(id) ? "" : "out"}"><span>${esc(catName(id))}・${inPool(id) ? poolsOf(id).join("、") : "現在抽不到"}</span>` +
     `<button data-rm="${id}" aria-label="移除 ${esc(catName(id))}">×</button></span>`).join("");
   $("q").placeholder = ui.goals.length >= 3 ? "最多 3 個，先移除一個" : "輸入角色名稱，最多 3 個";
 }
@@ -174,15 +197,27 @@ function drawRow(d) {
     `<span class="nm">${esc(d.cat.name)}</span>${d.switched ? `<span class="sw">換到 ${d.after}</span>` : "<span></span>"}</li>`;
 }
 
+const XTAG = a => `<span class="xtag ${a}">${a === "plat" ? "白金" : "傳說"}</span>`;
+function stageHead(st) {
+  if (st.action === "ticket") return `${icon("t")}× ${st.steps.length}`;
+  if (st.action === "eleven") return `${icon("f")}11 連`;
+  return `${XTAG(st.action)}× ${st.steps.length}`;
+}
+function stageTitle(st) {
+  if (st.action === "ticket") return icon("t") + `金券 × ${st.steps.length}`;
+  if (st.action === "eleven") return icon("f") + "11 連抽";
+  return XTAG(st.action) + `${ACTION_LABEL[st.action]} × ${st.steps.length}`;
+}
+
 function renderStages(steps) {
   const stages = stagesOf(steps);
   const head = stages.map((st, i) => `${i ? '<span class="arrow">→</span>' : ""}<span class="seg-item">` +
-    (st.action === "ticket" ? `${icon("t")}× ${st.steps.length}` : `${icon("f")}11 連`) + "</span>").join("");
+    stageHead(st) + "</span>").join("");
   const items = stages.map(st => {
     const ds = st.steps.flatMap(draws);
     const hits = ds.filter(d => isTarget(d.cat.id));
     const sw = ds.filter(d => d.switched && !/G$/.test(d.cat.extraLabel || ""));
-    return `<li class="step"><div class="step-title">${st.action === "ticket" ? icon("t") + `金券 × ${st.steps.length}` : icon("f") + "11 連抽"}` +
+    return `<li class="step"><div class="step-title">${stageTitle(st)}` +
       `<span class="mono muted">${ds[0].at} → ${ds.at(-1).after}</span></div>` +
       (hits.length ? `<div class="hit">拿到 ${hits.map(d => `${esc(d.cat.name)}（${d.at}）`).join("、")}</div>` : "") +
       (sw.length ? `<div class="small" style="color:var(--switch)">換列：${sw.map(d => `${d.at}→${d.after}`).join("、")}</div>` : "") +
@@ -195,16 +230,21 @@ function costLine(c) {
   const tLeft = progress.tickets - c.t, fLeft = progress.food - c.food;
   return `<div class="cost"><span>共 ${c.draws} 抽</span>` +
     `<span>${icon("t")} 金券 ${c.t} 張・${tLeft >= 0 ? `剩 ${tLeft}` : `<span class="short">差 ${-tLeft}</span>`}</span>` +
-    `<span>${icon("f")} 罐頭 ${c.food} 個・${fLeft >= 0 ? `剩 ${fLeft}` : `<span class="short">差 ${-fLeft}</span>`}</span></div>`;
+    `<span>${icon("f")} 罐頭 ${c.food} 個・${fLeft >= 0 ? `剩 ${fLeft}` : `<span class="short">差 ${-fLeft}</span>`}</span>` +
+    [["p", "plat"], ["l", "legend"]].filter(([k]) => c[k]).map(([k, a]) => {
+      const left = progress[a] - c[k];
+      return `<span>${XTAG(a)} ${ACTION_LABEL[a]} ${c[k]} 張・${left >= 0 ? `剩 ${left}` : `<span class="short">差 ${-left}</span>`}</span>`;
+    }).join("") + `</div>`;
 }
 
 function confirmBox(kind, steps) {
   const c = cost(steps);
   const next = glabel(steps.at(-1).next);
-  if (ui.confirm !== kind) return `<button class="primary" data-ask="${kind}" ${c.t > progress.tickets || c.food > progress.food ? "disabled" : ""}>` +
+  if (ui.confirm !== kind) return `<button class="primary" data-ask="${kind}" ${affordable(c) ? "" : "disabled"}>` +
     (kind === "plan" ? "照這個抽完了，存進度" : "已實抽，存進度") + "</button>";
   return `<div class="confirm"><b>確定存成這樣？</b><div>下一抽 <span class="mono">${progress.position} → ${next}</span></div>` +
-    `<div>金券 ${progress.tickets} → ${progress.tickets - c.t} 張、罐頭 ${progress.food} → ${progress.food - c.food} 個</div>` +
+    `<div>金券 ${progress.tickets} → ${progress.tickets - c.t} 張、罐頭 ${progress.food} → ${progress.food - c.food} 個` +
+    (c.p ? `、白金券 ${progress.plat} → ${progress.plat - c.p} 張` : "") + (c.l ? `、傳說券 ${progress.legend} → ${progress.legend - c.l} 張` : "") + `</div>` +
     `<div class="row"><button class="primary" data-commit="${kind}" ${busy ? "disabled" : ""}>確定存</button><button class="ghost" data-cancel>取消</button></div></div>`;
 }
 
@@ -220,7 +260,7 @@ function renderPlan() {
   if (p.error) { out.innerHTML = `<div class="box">${esc(p.error)}</div>`; return; }
   const c = cost(p.steps);
   const { head, items } = renderStages(p.steps);
-  const short = c.t > progress.tickets || c.food > progress.food;
+  const short = !affordable(c);
   out.innerHTML = (ui.saved ? savedBox() : "") + `<div class="box"><div class="plan-head">${head}</div>${costLine(c)}` +
     (short ? `<div class="note">目前的金券或罐頭不夠，上面是不管餘額時最少要花的量。</div>` : "") +
     `<ol class="steps">${items}</ol><div class="note">抽完下一抽是 <span class="mono">${glabel(p.next)}</span>。</div>${confirmBox("plan", p.steps)}</div>`;
@@ -231,14 +271,15 @@ function findPlan() {
   if (!ui.goals.length) { ui.plan = { error: "先在上面選 1～3 個想抽的角色。" }; return renderPlan(); }
   const missing = ui.goals.filter(id => !inPool(id));
   if (missing.length) { ui.plan = { error: `${missing.map(catName).join("、")} 不在這個卡池，換卡池再找。` }; return renderPlan(); }
-  const run = limits => E.findPlan(table.start, ui.goals, limits, ui.prio, pool.guaranteedRolls);
-  let r = run({ tickets: progress.tickets, eleven: elevenCap() });
+  const run = limits => E.findPlan(table.start, ui.goals, limits, ui.prio, pool.guaranteedRolls, table.rows, extras);
+  const n = ui.goals.length;
+  let r = run({ tickets: progress.tickets, eleven: elevenCap(), plat: Math.min(progress.plat, n), legend: Math.min(progress.legend, n) });
   if (!r) {
     const keep = ui.seqRows;
     ui.seqRows = 700; rebuild(); ui.seqRows = keep;
-    r = run({ tickets: 300, eleven: 30 });
+    r = run({ tickets: 300, eleven: 30, plat: n, legend: n });
   }
-  ui.plan = r ? { steps: r.steps, next: r.next } : { error: "就算金券 300 張、11 連 30 次也抽不到全部目標。" };
+  ui.plan = r ? { steps: r.steps, next: r.next } : { error: "就算金券 300 張、11 連 30 次，再加上白金券、傳說券，也抽不到全部目標。" };
   renderPlan();
 }
 
@@ -248,7 +289,7 @@ function renderManual() {
   const msg = ui.saved ? `<span class="${/^已存/.test(ui.saved) ? "ok" : "err"}">${esc(ui.saved)}</span>` : "";
   if (!ui.manual.length) { out.innerHTML = msg || `<p class="note" style="margin:0">按上面的按鈕先看會抽到什麼；只是預覽，不會改進度。</p>`; return; }
   const c = cost(ui.manual);
-  const list = ui.manual.map((s, i) => `<li class="step"><div class="step-title">${s.action === "ticket" ? icon("t") + "金券 1 抽" : icon("f") + "11 連抽"}` +
+  const list = ui.manual.map((s, i) => `<li class="step"><div class="step-title">${stageTitle({ action: s.action, steps: [s] })}` +
     `<span class="mono muted">#${i + 1}</span></div><ol class="draws">${draws(s).map(drawRow).join("")}</ol></li>`).join("");
   out.innerHTML = msg + `${costLine(c)}<ol class="steps">${list}</ol>` +
     `<div class="note">預覽後下一抽：<span class="mono">${glabel(ui.manual.at(-1).next)}</span> ${esc(ui.manual.at(-1).next.name)}</div>` +
@@ -274,11 +315,11 @@ async function commit(kind) {
   const got = steps.flatMap(draws).filter(d => d.cat.rarity >= 4).map(d => `${d.cat.name}（${d.at}）`);
   const entry = {
     time: new Date().toLocaleString("sv-SE"), from: progress.position, to, event: ui.event,
-    steps: stagesOf(steps).map(s => s.action === "ticket" ? `金券×${s.steps.length}` : "11連").join(" → "),
-    got, tickets: c.t, food: c.food, via: kind === "plan" ? "找抽法" : "手動抽",
+    steps: stagesOf(steps).map(s => s.action === "eleven" ? "11連" : `${ACTION_LABEL[s.action]}×${s.steps.length}`).join(" → "),
+    got, tickets: c.t, food: c.food, plat: c.p, legend: c.l, via: kind === "plan" ? "找抽法" : "手動抽",
   };
   const next = { ...progress, seed: st.seed, last: st.last, position: to, event: ui.event,
-    tickets: progress.tickets - c.t, food: progress.food - c.food,
+    tickets: progress.tickets - c.t, food: progress.food - c.food, plat: progress.plat - c.p, legend: progress.legend - c.l,
     history: [entry, ...(progress.history || [])] };
   ui.confirm = kind;
   renderPlan(); renderManual();
@@ -296,7 +337,8 @@ function renderSeq() {
     const now = cat === start || cat.rerolled === start;
     return `<div class="cell ${rarityCls(cat)} ${now ? "now" : ""} ${isTarget(cat.id) ? "target" : ""}">` +
       `<span class="mono">${glabel(cat)}</span><span class="nm">${esc(cat.name)}</span>` +
-      (cat.rerolled ? `<span class="alt">重複時 → ${esc(cat.rerolled.name)}</span>` : "") + "</div>";
+      (cat.rerolled ? `<span class="alt">重複時 → ${esc(cat.rerolled.name)}</span>` : "") +
+      extras.map(x => { const c = extraCell(x, cat); return c ? `<span class="xl ${isTarget(c.id) ? "hit" : ""}">${x.label}：${esc(c.name)}</span>` : ""; }).join("") + "</div>";
   }).join("")}</div>`).join("");
 }
 
@@ -354,12 +396,14 @@ function bind() {
   const wallet = async () => {
     const tickets = Math.max(0, parseInt($("tickets").value, 10) || 0);
     const food = Math.max(0, parseInt($("food").value, 10) || 0);
-    if (tickets === progress.tickets && food === progress.food) return;
+    const plat = Math.max(0, parseInt($("plat").value, 10) || 0);
+    const legend = Math.max(0, parseInt($("legend").value, 10) || 0);
+    if (tickets === progress.tickets && food === progress.food && plat === progress.plat && legend === progress.legend) return;
     ui.plan = null; ui.confirm = null;
-    await persist({ ...progress, tickets, food }, "更新金券與罐頭");
+    await persist({ ...progress, tickets, food, plat, legend }, "更新抽卡資源");
     rebuild(); renderStatus(); renderPlan(); renderManual();
   };
-  $("tickets").onchange = wallet; $("food").onchange = wallet;
+  for (const id of ["tickets", "food", "plat", "legend"]) $(id).onchange = wallet;
   $("q").oninput = () => renderSuggest(true);
   $("q").onfocus = () => renderSuggest(true);
   $("connect").onclick = () => { const v = $("token").value.trim(); if (v) connect(v); };
@@ -379,6 +423,8 @@ function bind() {
     else if (t.id === "find") findPlan();
     else if (t.id === "m-ticket") manualStep("ticket");
     else if (t.id === "m-eleven") manualStep("eleven");
+    else if (t.id === "m-plat") manualStep("plat");
+    else if (t.id === "m-legend") manualStep("legend");
     else if (t.id === "m-undo") { ui.manual.pop(); ui.confirm = null; renderManual(); }
     else if (t.id === "m-clear") { ui.manual = []; ui.confirm = null; renderManual(); }
     else if (t.id === "more") { ui.seqRows += 20; if (ui.seqRows > table.rows.length) rebuild(); renderSeq(); }
