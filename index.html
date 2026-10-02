@@ -1,0 +1,224 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<link rel="icon" href="img/food.png">
+<link rel="apple-touch-icon" href="img/food.png">
+<title>貓戰抽卡規劃</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* 版面：單欄手機優先；頂部狀態卡固定資訊，下方三個分頁 */
+:root {
+  --bg: #eef0f5; --surface: #ffffff; --sunk: #f6f7fa; --ink: #1a1c28; --muted: #5a6074; --line: #dcdfe8;
+  --gold: #d99a06; --gold-ink: #7a5200; --gold-soft: #fdf1d2;
+  --uber: #b3245f; --uber-soft: #fbe4ee; --legend: #6b3fd1; --switch: #0f6e8c;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11121a; --surface: #1a1c27; --sunk: #151620; --ink: #eceef6; --muted: #9ba1b6; --line: #2b2e3d;
+  --gold: #f2b631; --gold-ink: #f6c95e; --gold-soft: #3a2f12;
+  --uber: #f07aab; --uber-soft: #3b1a2a; --legend: #ad92ff; --switch: #56c2e0; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #11121a; --surface: #1a1c27; --sunk: #151620; --ink: #eceef6; --muted: #9ba1b6; --line: #2b2e3d;
+  --gold: #f2b631; --gold-ink: #f6c95e; --gold-soft: #3a2f12;
+  --uber: #f07aab; --uber-soft: #3b1a2a; --legend: #ad92ff; --switch: #56c2e0; color-scheme: dark }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.5; }
+.wrap { max-width: 560px; margin: 0 auto; padding-inline: 16px; padding-block: 12px 48px; display: grid; gap: 14px; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+h1 { font-size: 17px; margin: 0; letter-spacing: .02em; }
+h2 { font-size: 15px; margin: 0; }
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.icon { width: 22px; height: 22px; object-fit: contain; flex: none; vertical-align: middle; }
+
+.top { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+.sample { font-size: 12px; color: var(--gold-ink); background: var(--gold-soft); padding: 2px 8px; border-radius: 99px; white-space: nowrap; }
+
+.status { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 12px; }
+.next-row { display: flex; align-items: center; gap: 12px; }
+.pos { font-family: var(--mono); font-weight: 600; font-size: 30px; line-height: 1; letter-spacing: -.01em; }
+.next-text { min-width: 0; display: grid; gap: 2px; }
+.next-text b { overflow-wrap: anywhere; }
+.wallet { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.purse { display: flex; align-items: center; gap: 8px; background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+.purse input { width: 100%; min-width: 0; border: 0; background: transparent; font-family: var(--mono); font-weight: 600; font-size: 17px; padding: 0; }
+.purse label { display: grid; min-width: 0; flex: 1; }
+.purse .unit { font-size: 12px; color: var(--muted); }
+select { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); }
+.pool-meta { margin-top: 4px; }
+
+.tabs { display: grid; grid-template-columns: repeat(3, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 4px; gap: 4px;
+  position: sticky; top: env(safe-area-inset-top, 0px); z-index: 5; }
+.tabs button { border: 0; background: transparent; padding: 9px 4px; border-radius: 9px; font-weight: 600; color: var(--muted); }
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--bg); }
+
+.panel { display: grid; gap: 12px; }
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 10px; min-width: 0; }
+
+.search { position: relative; }
+.search input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); }
+.suggest { position: absolute; left: 0; right: 0; top: calc(100% + 4px); background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  max-height: 46vh; overflow-y: auto; z-index: 10; box-shadow: 0 12px 28px rgb(0 0 0 / .18); }
+.suggest .grp { position: sticky; top: 0; background: var(--sunk); padding: 6px 12px; font-size: 12px; font-weight: 700; color: var(--muted); border-bottom: 1px solid var(--line); }
+.suggest button { display: block; width: 100%; text-align: left; border: 0; background: transparent; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.suggest button:last-child { border-bottom: 0; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 6px; padding: 5px 6px 5px 10px; border-radius: 99px; background: var(--uber-soft); color: var(--uber); font-weight: 600; max-width: 100%; }
+.chip.out { background: var(--sunk); color: var(--muted); }
+.chip span { overflow-wrap: anywhere; }
+.chip button { border: 0; background: transparent; color: inherit; width: 26px; height: 26px; border-radius: 99px; font-size: 16px; line-height: 1; }
+
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { border: 0; background: var(--sunk); padding: 8px 2px; font-size: 13px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--gold-soft); color: var(--gold-ink); font-weight: 700; }
+
+.primary { border: 0; border-radius: 12px; padding: 12px; background: var(--gold); color: #241800; font-weight: 700; font-size: 16px; }
+.primary:disabled { opacity: .45; cursor: default; }
+.ghost { border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; background: var(--surface); font-weight: 600; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+.row > * { flex: 1 1 auto; }
+
+.plan-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; font-weight: 700; font-size: 16px; }
+.plan-head .arrow { color: var(--muted); font-weight: 400; }
+.seg-item { display: inline-flex; align-items: center; gap: 4px; }
+.cost { display: flex; flex-wrap: wrap; gap: 6px 14px; font-size: 13px; color: var(--muted); }
+.cost .short { color: var(--uber); font-weight: 700; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; }
+.step { padding: 12px 0; border-top: 1px solid var(--line); display: grid; gap: 6px; }
+.step-title { display: flex; align-items: center; gap: 8px; font-weight: 600; }
+.step-title .mono { font-weight: 600; }
+.hit { color: var(--uber); font-weight: 700; }
+details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.draws { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; }
+.draw { display: grid; grid-template-columns: 52px 1fr auto; gap: 8px; align-items: baseline; padding: 4px 6px; border-radius: 6px; font-size: 14px; }
+.draw .mono { font-size: 13px; color: var(--muted); }
+.draw.uber .nm { color: var(--uber); font-weight: 700; }
+.draw.legend .nm { color: var(--legend); font-weight: 700; }
+.draw.target { background: var(--uber-soft); }
+.draw .sw { font-size: 12px; color: var(--switch); white-space: nowrap; }
+.nm { min-width: 0; overflow-wrap: anywhere; }
+
+.confirm { border: 2px solid var(--gold); background: var(--gold-soft); border-radius: 12px; padding: 12px; display: grid; gap: 8px; }
+.note { font-size: 13px; color: var(--muted); }
+.ok { color: var(--switch); font-weight: 600; }
+
+.seq { display: grid; gap: 4px; }
+.seq-row { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+.cell { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; min-width: 0; font-size: 13px; display: grid; gap: 1px; }
+.cell .mono { font-size: 12px; color: var(--muted); }
+.cell.uber .nm { color: var(--uber); font-weight: 700; }
+.cell.legend .nm { color: var(--legend); font-weight: 700; }
+.cell.now { border: 2px solid var(--gold); }
+.cell.target { background: var(--uber-soft); }
+.cell .alt { font-size: 12px; color: var(--switch); }
+@media (prefers-reduced-motion: no-preference) { .tabs button { transition: background .15s; } }
+.badge { font-size: 12px; padding: 2px 8px; border-radius: 99px; white-space: nowrap; background: var(--sunk); color: var(--muted); border: 1px solid var(--line); }
+.badge.bad { color: var(--uber); background: var(--uber-soft); border-color: transparent; }
+.setup input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); font-family: var(--mono); }
+.err { color: var(--uber); font-weight: 600; }
+.foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.link { border: 0; background: transparent; color: var(--muted); text-decoration: underline; padding: 4px 0; font-size: 12px; }
+:root { padding-top: env(safe-area-inset-top, 0px); padding-bottom: env(safe-area-inset-bottom, 0px); }
+</style>
+</head>
+<body>
+
+<div class="wrap">
+  <div class="top">
+    <h1>貓戰抽卡規劃</h1>
+    <span class="badge" id="sync">讀取中</span>
+  </div>
+
+
+  <section class="box setup" id="setup" hidden>
+    <h2>連上你的進度檔</h2>
+    <p class="note" style="margin:0">貼上 GitHub 鑰匙。鑰匙只存在這支手機的瀏覽器裡，換手機要再貼一次。</p>
+    <label class="small muted" for="token">GitHub 鑰匙</label>
+    <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…">
+    <div class="err" id="setup-err" hidden></div>
+    <div class="row"><button class="primary" id="connect">連線</button><button class="ghost" id="setup-cancel" hidden>取消</button></div>
+  </section>
+
+  <div class="box" id="loading">正在讀取進度…</div>
+
+  <div id="main" hidden style="display:contents">
+  <section class="status" aria-label="目前狀態">
+    <div class="next-row">
+      <div class="pos" id="pos"></div>
+      <div class="next-text">
+        <span class="small muted">下一抽</span>
+        <b id="next-name"></b>
+        <span class="small muted" id="next-g"></span>
+      </div>
+    </div>
+    <div class="wallet">
+      <div class="purse"><img class="icon" id="ic-t" alt=""><label for="tickets"><span class="unit">金券</span><input id="tickets" type="number" inputmode="numeric" min="0"></label></div>
+      <div class="purse"><img class="icon" id="ic-f" alt=""><label for="food"><span class="unit">罐頭</span><input id="food" type="number" inputmode="numeric" min="0" step="1"></label></div>
+    </div>
+    <div>
+      <label class="small muted" for="pool">卡池</label>
+      <select id="pool"></select>
+      <div class="pool-meta small muted" id="pool-meta"></div>
+    </div>
+  </section>
+
+  <nav class="tabs" role="tablist">
+    <button role="tab" id="tab-plan" aria-selected="true">找抽法</button>
+    <button role="tab" id="tab-manual" aria-selected="false">手動抽</button>
+    <button role="tab" id="tab-seq" aria-selected="false">序列</button>
+  </nav>
+
+  <section class="panel" id="panel-plan">
+    <div class="box">
+      <h2>想抽到誰</h2>
+      <div class="search">
+        <input id="q" type="search" placeholder="輸入角色名稱，最多 3 個" autocomplete="off" aria-expanded="false">
+        <div class="suggest" id="suggest" hidden></div>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="seg" id="prio" role="group" aria-label="優先">
+        <button data-p="draws" aria-pressed="true">總抽數最少</button>
+        <button data-p="tickets">先用金券</button>
+        <button data-p="food">先用罐頭</button>
+      </div>
+      <button class="primary" id="find">找抽法</button>
+    </div>
+    <div id="plan-out"></div>
+  </section>
+
+  <section class="panel" id="panel-manual" hidden>
+    <div class="box">
+      <h2>抽之前先看結果</h2>
+      <div class="row">
+        <button class="ghost" id="m-ticket"><img class="icon ic-t" alt=""> 金券抽 1 次</button>
+        <button class="ghost" id="m-eleven"><img class="icon ic-f" alt=""> 11 連抽</button>
+      </div>
+      <div id="manual-out"></div>
+    </div>
+  </section>
+
+  <section class="panel" id="panel-seq" hidden>
+    <div class="box">
+      <h2>接下來的序列</h2>
+      <p class="note" style="margin:0">金框是下一抽。藍字是遇到重複稀有時會換到的角色。</p>
+      <div class="seq" id="seq"></div>
+      <button class="ghost" id="more">再顯示 20 列</button>
+    </div>
+  </section>
+  <div class="foot" id="foot" hidden><span id="data-ver"></span><button class="link" id="rekey">換鑰匙</button></div>
+  </div>
+</div>
+<script type="module" src="js/app.mjs"></script>
+</body>
+</html>

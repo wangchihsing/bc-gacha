@@ -1,0 +1,9 @@
+bc-gacha
+
+抽卡計算（js/engine.mjs）移植自 battle-cats-rolls：
+  https://gitlab.com/godfat/battle-cats-rolls
+  Copyright (c) 2018-2026, Lin Jen-Shin (godfat)
+  Licensed under the Apache License, Version 2.0
+
+卡池與角色資料（data/bc-tw.json）由同一專案的 build/bc-tw.yaml 轉換而來。
+道具圖示取自 The Battle Cats Wiki（Stamp_reward_rareticket.png、Cat_Food.png），版權屬 PONOS。
