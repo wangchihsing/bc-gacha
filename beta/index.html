@@ -1,0 +1,257 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<link rel="icon" href="../img/food.png">
+<link rel="apple-touch-icon" href="../img/food.png">
+<title>貓戰抽卡規劃</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@500;600&display=swap">
+<style>
+/* 版面：手機＝頂部固定狀態列＋底部分頁；電腦（≥900px）＝左欄找抽法、右欄序列／紀錄 */
+:root {
+  --bg: #eef0f5; --surface: #ffffff; --sunk: #f6f7fa; --ink: #1a1c28; --muted: #5a6074; --line: #dcdfe8;
+  --gold: #d99a06; --gold-ink: #7a5200; --gold-soft: #fdf1d2;
+  --uber: #b3245f; --uber-soft: #fbe4ee; --legend: #6b3fd1; --switch: #0f6e8c; --good: #1d7a46;
+  --mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+  --sans: -apple-system, BlinkMacSystemFont, "PingFang TC", "Noto Sans TC", "Microsoft JhengHei", sans-serif;
+  --bar-h: 56px; --tab-h: 58px;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #11121a; --surface: #1a1c27; --sunk: #151620; --ink: #eceef6; --muted: #9ba1b6; --line: #2b2e3d;
+  --gold: #f2b631; --gold-ink: #f6c95e; --gold-soft: #3a2f12;
+  --uber: #f07aab; --uber-soft: #3b1a2a; --legend: #ad92ff; --switch: #56c2e0; --good: #5fd08e; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #11121a; --surface: #1a1c27; --sunk: #151620; --ink: #eceef6; --muted: #9ba1b6; --line: #2b2e3d;
+  --gold: #f2b631; --gold-ink: #f6c95e; --gold-soft: #3a2f12;
+  --uber: #f07aab; --uber-soft: #3b1a2a; --legend: #ad92ff; --switch: #56c2e0; --good: #5fd08e; color-scheme: dark }
+
+* { box-sizing: border-box; }
+[hidden] { display: none !important; }
+html, body { margin: 0; }
+body { background: var(--bg); color: var(--ink); font-family: var(--sans); font-size: 15px; line-height: 1.5; }
+.mono { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.muted { color: var(--muted); }
+.small { font-size: 13px; }
+h2 { font-size: 15px; margin: 0; }
+button, select, input { font: inherit; color: inherit; }
+button { cursor: pointer; }
+:focus-visible { outline: 2px solid var(--gold); outline-offset: 2px; }
+.icon { width: 22px; height: 22px; object-fit: contain; flex: none; vertical-align: middle; }
+.icon.sm { width: 18px; height: 18px; }
+
+/* 頂部狀態列 */
+.bar { position: sticky; top: 0; z-index: 20; background: var(--surface); border-bottom: 1px solid var(--line);
+  padding-top: env(safe-area-inset-top, 0px); }
+.bar-in { max-width: 1180px; margin: 0 auto; padding-inline: 16px; min-height: var(--bar-h); display: flex; align-items: center; gap: 12px; }
+.here { display: grid; line-height: 1.15; flex: none; }
+.here .lbl { font-size: 11px; color: var(--muted); display: flex; align-items: center; gap: 5px; }
+.here .pos { font-family: var(--mono); font-weight: 600; font-size: 24px; }
+.dot { width: 7px; height: 7px; border-radius: 99px; background: var(--muted); display: inline-block; }
+.dot.good { background: var(--good); } .dot.bad { background: var(--uber); }
+.wallet-btn { margin-left: auto; min-width: 0; border: 1px solid var(--line); background: var(--sunk); border-radius: 12px; padding: 6px 10px;
+  display: flex; align-items: center; gap: 4px 10px; flex-wrap: wrap; justify-content: flex-end; }
+.money { display: inline-flex; align-items: center; gap: 3px; font-family: var(--mono); font-weight: 600; font-size: 14px; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.wallet-edit { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 0 12px; display: grid; gap: 10px; }
+.purses { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.purse { display: flex; align-items: center; gap: 8px; background: var(--sunk); border: 1px solid var(--line); border-radius: 10px; padding: 8px 10px; min-width: 0; }
+.purse input { width: 100%; min-width: 0; border: 0; background: transparent; font-family: var(--mono); font-weight: 600; font-size: 18px; padding: 0; }
+
+/* 主體 */
+.layout { max-width: 1180px; margin: 0 auto; padding-inline: 16px; padding-block: 14px calc(var(--tab-h) + 28px + env(safe-area-inset-bottom, 0px)); display: grid; gap: 14px; align-items: start; }
+.col { display: grid; gap: 12px; min-width: 0; }
+.box { background: var(--surface); border: 1px solid var(--line); border-radius: 14px; padding: 14px; display: grid; gap: 10px; min-width: 0; }
+
+/* 底部分頁（手機） */
+.tabbar { position: fixed; left: 0; right: 0; bottom: 0; z-index: 20; background: var(--surface); border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom, 0px); display: grid; grid-template-columns: repeat(3, 1fr); }
+.tabbar button { border: 0; background: transparent; height: var(--tab-h); font-weight: 600; color: var(--muted); font-size: 15px; }
+.tabbar button[aria-selected="true"] { color: var(--ink); box-shadow: inset 0 3px 0 var(--gold); }
+/* 右欄分頁（電腦） */
+.side-tabs { display: none; grid-template-columns: repeat(2, 1fr); background: var(--surface); border: 1px solid var(--line); border-radius: 12px; padding: 4px; gap: 4px; }
+.side-tabs button { border: 0; background: transparent; padding: 8px 4px; border-radius: 9px; font-weight: 600; color: var(--muted); }
+.side-tabs button[aria-selected="true"] { background: var(--ink); color: var(--bg); }
+
+@media (min-width: 900px) {
+  .layout { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); padding-block: 18px 40px; gap: 18px; }
+  .tabbar { display: none; }
+  .side-tabs { display: grid; }
+  .col-side { position: sticky; top: calc(var(--bar-h) + 18px); max-height: calc(100vh - var(--bar-h) - 36px); overflow-y: auto; }
+  .purses { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+}
+
+/* 想要清單 */
+.search { position: relative; }
+.search input, .goto-input, .setup input { width: 100%; padding: 10px 12px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); }
+.suggest { position: absolute; left: 0; right: 0; top: calc(100% + 4px); background: var(--surface); border: 1px solid var(--line); border-radius: 10px;
+  max-height: 46vh; overflow-y: auto; z-index: 10; box-shadow: 0 12px 28px rgb(0 0 0 / .18); }
+.suggest .grp { position: sticky; top: 0; background: var(--sunk); padding: 6px 12px; font-size: 12px; font-weight: 700; color: var(--muted); border-bottom: 1px solid var(--line); }
+.suggest button { display: flex; align-items: center; gap: 6px; width: 100%; text-align: left; border: 0; background: transparent; padding: 10px 12px; border-bottom: 1px solid var(--line); }
+.suggest button:last-child { border-bottom: 0; }
+.srcs { display: inline-flex; gap: 2px; margin-left: auto; }
+.chips { display: flex; flex-wrap: wrap; gap: 8px; }
+.chip { display: inline-flex; align-items: center; gap: 4px; padding: 4px 4px 4px 10px; border-radius: 99px; background: var(--uber-soft); color: var(--uber); font-weight: 600; max-width: 100%; }
+.chip.out { background: var(--sunk); color: var(--muted); }
+.chip.off { opacity: .5; text-decoration: line-through; }
+.chip .chip-name { border: 0; background: transparent; color: inherit; font-weight: inherit; padding: 0; display: inline-flex; align-items: center; gap: 6px; text-align: left; overflow-wrap: anywhere; text-decoration: inherit; }
+.chip .x { border: 0; background: transparent; color: inherit; width: 28px; height: 28px; border-radius: 99px; font-size: 16px; line-height: 1; }
+
+.seg { display: grid; grid-template-columns: repeat(3, 1fr); border: 1px solid var(--line); border-radius: 10px; overflow: hidden; }
+.seg button { border: 0; background: var(--sunk); padding: 8px 2px; font-size: 13px; }
+.seg button + button { border-left: 1px solid var(--line); }
+.seg button[aria-pressed="true"] { background: var(--gold-soft); color: var(--gold-ink); font-weight: 700; }
+.primary { border: 0; border-radius: 12px; padding: 12px; background: var(--gold); color: #241800; font-weight: 700; font-size: 16px; }
+.primary:disabled { opacity: .45; cursor: default; }
+.ghost { border: 1px solid var(--line); border-radius: 10px; padding: 9px 12px; background: var(--surface); font-weight: 600; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+.row > * { flex: 1 1 auto; }
+
+/* 找抽法結果 */
+.plan-head { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 8px; font-weight: 700; font-size: 18px; }
+.plan-head .arrow { color: var(--muted); font-weight: 400; }
+.seg-item { display: inline-flex; align-items: center; gap: 4px; font-family: var(--mono); }
+.total { font-size: 20px; font-weight: 700; }
+.costs { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.costs li { display: flex; align-items: center; gap: 8px; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+.costs .used { font-weight: 600; min-width: 3ch; }
+.costs .left { color: var(--muted); font-size: 13px; }
+.costs .short { color: var(--uber); font-weight: 700; font-size: 13px; }
+.steps { list-style: none; margin: 0; padding: 0; display: grid; }
+.step { padding: 12px 0; border-top: 1px solid var(--line); display: grid; gap: 6px; }
+.step-title { display: flex; align-items: center; flex-wrap: wrap; gap: 4px 8px; font-weight: 600; }
+.hit { color: var(--uber); font-weight: 700; }
+details summary { cursor: pointer; color: var(--muted); font-size: 13px; }
+.draws { list-style: none; margin: 6px 0 0; padding: 0; display: grid; gap: 2px; }
+.draw { display: grid; grid-template-columns: 52px 1fr auto; gap: 8px; align-items: baseline; padding: 4px 6px; border-radius: 6px; font-size: 14px; }
+.draw .mono { font-size: 13px; color: var(--muted); }
+.draw.uber .nm { color: var(--uber); font-weight: 700; }
+.draw.legend .nm { color: var(--legend); font-weight: 700; }
+.draw.target { background: var(--uber-soft); }
+.draw .sw { font-size: 12px; color: var(--switch); white-space: nowrap; }
+.nm { min-width: 0; overflow-wrap: anywhere; }
+.confirm { border: 2px solid var(--gold); background: var(--gold-soft); border-radius: 12px; padding: 12px; display: grid; gap: 8px; }
+.note { font-size: 13px; color: var(--muted); margin: 0; }
+.ok { color: var(--good); font-weight: 600; }
+.err { color: var(--uber); font-weight: 600; }
+.hint { border-color: var(--switch); }
+
+/* 序列 */
+.now-info { display: grid; gap: 4px; }
+.now-info .big { font-size: 17px; font-weight: 700; }
+.extra-now { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 14px; }
+.extra-now span { display: inline-flex; align-items: center; gap: 4px; }
+select { width: 100%; padding: 9px 10px; border: 1px solid var(--line); border-radius: 10px; background: var(--sunk); }
+.seq { display: grid; gap: 4px; }
+.seq-row { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; }
+button.cell { background: var(--surface); border: 1px solid var(--line); border-radius: 8px; padding: 6px 8px; min-width: 0; font-size: 13px; display: grid; gap: 1px;
+  text-align: left; width: 100%; }
+.cell .mono { font-size: 12px; color: var(--muted); }
+.cell.uber .nm { color: var(--uber); font-weight: 700; }
+.cell.legend .nm { color: var(--legend); font-weight: 700; }
+.cell.now { border: 2px solid var(--gold); }
+.cell.target { background: var(--uber-soft); }
+.cell.picked { outline: 2px solid var(--switch); }
+.cell .alt { font-size: 12px; color: var(--switch); }
+.cell .xl { font-size: 12px; color: var(--muted); display: flex; align-items: center; gap: 4px; }
+.cell .xl.hit { color: var(--uber); font-weight: 700; }
+.goto { display: flex; gap: 8px; }
+.goto-input { flex: 1 1 auto; font-family: var(--mono); }
+.goto .ghost { flex: none; white-space: nowrap; }
+.radio { display: flex; gap: 8px; align-items: flex-start; font-size: 14px; }
+
+/* 紀錄 */
+.log-cost { display: flex; flex-wrap: wrap; gap: 4px 12px; }
+.foot { display: flex; justify-content: space-between; align-items: center; gap: 8px; font-size: 12px; color: var(--muted); }
+.link { border: 0; background: transparent; color: var(--muted); text-decoration: underline; padding: 4px 0; font-size: 12px; }
+.beta { font-size: 11px; color: var(--gold-ink); background: var(--gold-soft); padding: 1px 6px; border-radius: 99px; }
+</style>
+</head>
+<body>
+<header class="bar" id="bar" hidden>
+  <div class="bar-in">
+    <div class="here">
+      <span class="lbl"><span class="dot" id="sync" role="img" aria-label="讀取中"></span>下一抽 <span class="beta">試用版</span></span>
+      <span class="pos" id="pos"></span>
+    </div>
+    <button class="wallet-btn" id="wallet-btn" aria-expanded="false" aria-controls="wallet-edit" aria-label="抽卡資源，點一下修改">
+      <span class="money"><img class="icon sm ic-t" alt="金券"><span id="m-tickets"></span></span>
+      <span class="money"><img class="icon sm ic-f" alt="罐頭"><span id="m-food"></span></span>
+      <span class="money"><img class="icon sm ic-p" alt="白金券"><span id="m-plat"></span></span>
+      <span class="money"><img class="icon sm ic-l" alt="傳說券"><span id="m-legend"></span></span>
+    </button>
+  </div>
+  <div class="wallet-edit" id="wallet-edit" hidden>
+    <div class="purses">
+      <label class="purse"><img class="icon ic-t" alt=""><input id="tickets" type="number" inputmode="numeric" min="0" aria-label="金券"></label>
+      <label class="purse"><img class="icon ic-f" alt=""><input id="food" type="number" inputmode="numeric" min="0" aria-label="罐頭"></label>
+      <label class="purse"><img class="icon ic-p" alt=""><input id="plat" type="number" inputmode="numeric" min="0" aria-label="白金券"></label>
+      <label class="purse"><img class="icon ic-l" alt=""><input id="legend" type="number" inputmode="numeric" min="0" aria-label="傳說券"></label>
+    </div>
+    <div class="row"><button class="primary" id="wallet-save">存</button><button class="ghost" id="wallet-cancel">取消</button></div>
+  </div>
+</header>
+
+<main class="layout" id="layout">
+  <section class="box setup" id="setup" hidden>
+    <h2>連上你的進度檔</h2>
+    <p class="note">貼上 GitHub 鑰匙。鑰匙只存在這支手機的瀏覽器裡，換手機要再貼一次。</p>
+    <input id="token" type="password" autocomplete="off" spellcheck="false" placeholder="github_pat_…" aria-label="GitHub 鑰匙">
+    <div class="err" id="setup-err" hidden></div>
+    <div class="row"><button class="primary" id="connect">連線</button><button class="ghost" id="setup-cancel" hidden>取消</button></div>
+  </section>
+  <div class="box" id="loading">正在讀取進度…</div>
+
+  <section class="col col-plan" id="panel-plan" hidden>
+    <div class="box">
+      <div class="search">
+        <input id="q" type="search" placeholder="加入想要的角色" autocomplete="off" aria-expanded="false" aria-label="搜尋角色">
+        <div class="suggest" id="suggest" hidden></div>
+      </div>
+      <div class="chips" id="chips"></div>
+      <div class="seg" id="prio" role="group" aria-label="優先">
+        <button data-p="draws" aria-pressed="true">總抽數最少</button>
+        <button data-p="tickets">先用金券</button>
+        <button data-p="food">先用罐頭</button>
+      </div>
+      <button class="primary" id="find">找抽法</button>
+    </div>
+    <div id="plan-out" class="col"></div>
+  </section>
+
+  <section class="col col-side" id="col-side" hidden>
+    <nav class="side-tabs" role="tablist">
+      <button role="tab" data-tab="seq" aria-selected="true">序列・校正</button>
+      <button role="tab" data-tab="log" aria-selected="false">紀錄</button>
+    </nav>
+    <section class="col" id="panel-seq">
+      <div class="box">
+        <div class="now-info" id="now-info"></div>
+        <select id="pool" aria-label="序列顯示哪一個卡池"></select>
+        <div class="small muted" id="pool-meta"></div>
+      </div>
+      <div class="box">
+        <div class="goto"><input id="goto-cell" class="goto-input" placeholder="校正到格號，例如 195A" autocomplete="off" spellcheck="false" aria-label="校正到格號"><button class="ghost" id="goto">校正</button></div>
+        <div id="calib"></div>
+        <div class="seq" id="seq"></div>
+        <button class="ghost" id="more">再顯示 20 列</button>
+      </div>
+    </section>
+    <section class="col" id="panel-log" hidden>
+      <div class="box">
+        <div id="log"></div>
+      </div>
+      <div class="foot"><span id="data-ver"></span><button class="link" id="rekey">換鑰匙</button></div>
+    </section>
+  </section>
+</main>
+
+<nav class="tabbar" id="tabbar" role="tablist" hidden>
+  <button role="tab" data-tab="plan" aria-selected="true">找抽法</button>
+  <button role="tab" data-tab="seq" aria-selected="false">序列</button>
+  <button role="tab" data-tab="log" aria-selected="false">紀錄</button>
+</nav>
+<script type="module" src="app.mjs"></script>
+</body>
+</html>
