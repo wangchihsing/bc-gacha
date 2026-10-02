@@ -28,6 +28,7 @@ async function call(token, path, init = {}) {
     },
   });
   if (res.status === 401 || res.status === 403) throw new AuthError("鑰匙無效、過期，或沒有這個儲存庫的讀寫權限");
+  if (res.status === 404) throw new AuthError("鑰匙有效，但沒有開放 bc-gacha-data 這個儲存庫；到 GitHub 編輯鑰匙，把它加進 Repository access");
   if (res.status === 409 || res.status === 422) throw new ConflictError("進度在別的地方被改過");
   if (!res.ok) throw new Error(`GitHub 回應 ${res.status}`);
   return res.json();
